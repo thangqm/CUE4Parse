@@ -13,6 +13,7 @@ public class ExportOptions(
     int textureQuality = 100,
     bool exportHdrTexturesAsHdr = true,
     bool exportAllTextureMips = false,
+    bool flipNormalY = false,
     EMaterialDepth materialDepth = EMaterialDepth.TopLayerOnly,
     bool exportMaterials = true,
     bool exportMorphTargets = true,
@@ -32,6 +33,7 @@ public class ExportOptions(
     // surfaces per texture — so downgrade rather than fail the whole command.
     public readonly bool ExportHdrTexturesAsHdr = meshFormat != EMeshFormat.Gltf2 && exportHdrTexturesAsHdr;
     public readonly bool ExportAllTextureMips = exportAllTextureMips;
+    public readonly bool FlipNormalY = flipNormalY;
 
     public readonly EMaterialDepth MaterialDepth = materialDepth;
     public readonly bool ExportMaterials = exportMaterials; // not to be confused, when we export a mesh we will look (or not) for its materials and export them (or not)

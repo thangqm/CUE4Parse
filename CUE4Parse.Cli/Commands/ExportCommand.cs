@@ -18,7 +18,8 @@ public sealed record ExportFlags(
     // Defaulted so ExportFlagDefaults and every existing call site keep compiling.
     string CompressionFormat = "none",
     bool NoMorphTargets = false,
-    bool NoHdr = false);
+    bool NoHdr = false,
+    bool FlipNormalY = false);
 
 public sealed record ExportCommandOptions(
     string[] Paths,

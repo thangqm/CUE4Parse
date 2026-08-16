@@ -84,6 +84,8 @@ var compressionFormatOpt = new Option<string>("--compression-format")
 var noMorphTargetsOpt = new Option<bool>("--no-morph-targets") { Description = "Skip morph targets" };
 var noHdrOpt = new Option<bool>("--no-hdr")
     { Description = "Write HDR sources in the raster format instead of .hdr (no effect with --mesh-format gltf2)" };
+var flipNormalYOpt = new Option<bool>("--flip-normal-y")
+    { Description = "Invert the green channel of TC_Normalmap textures" };
 
 compressionFormatOpt.AcceptOnlyFromAmong([.. ExportOptionsMapper.CompressionFormats.Keys]);
 var parallelOpt = new Option<int>("--parallel")
@@ -106,7 +108,7 @@ foreach (var option in new Option[]
 {
     TargetOptions.OutputDir, meshFormatOpt, textureFormatOpt, texturePlatformOpt, meshQualityOpt,
     naniteOpt, socketFormatOpt, materialDepthOpt, textureQualityOpt, noMaterialsOpt,
-    allMipsOpt, parallelOpt, compressionFormatOpt, noMorphTargetsOpt, noHdrOpt,
+    allMipsOpt, parallelOpt, compressionFormatOpt, noMorphTargetsOpt, noHdrOpt, flipNormalYOpt,
 })
 {
     exportCmd.Options.Add(option);
@@ -130,7 +132,8 @@ exportCmd.SetAction((pr, ct) => RunAsync(pr, ctx => ExportCommand.ExecuteAsync(c
             AllMips: pr.GetValue(allMipsOpt),
             CompressionFormat: pr.GetValue(compressionFormatOpt)!,
             NoMorphTargets: pr.GetValue(noMorphTargetsOpt),
-            NoHdr: pr.GetValue(noHdrOpt)),
+            NoHdr: pr.GetValue(noHdrOpt),
+            FlipNormalY: pr.GetValue(flipNormalYOpt)),
         Parallel: pr.GetValue(parallelOpt),
         Force: pr.GetValue(TargetOptions.Force)),
     ct)));

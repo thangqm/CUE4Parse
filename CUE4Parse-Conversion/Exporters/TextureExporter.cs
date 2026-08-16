@@ -67,6 +67,15 @@ public sealed class TextureExporter(UTexture texture) : ExporterBase(texture)
             {
                 if (decoded[i] is not { } slice) continue;
 
+                if (Session.Options.FlipNormalY && texture.IsNormalMap)
+                {
+                    // glTF has no "flip the green channel" concept, so the inversion has
+                    // to happen in the written bytes. Off by default: cue4 writes what the
+                    // game shipped. If the result lights inside-out in Blender the user
+                    // turns this on — guessing for them is worse than asking.
+                    InvertGreenChannel(slice);
+                }
+
                 var data = slice.Encode(Session.Options, out var ext);
 
                 // The single-mip suffix comes from the shared namer so the glTF binder
@@ -78,6 +87,33 @@ public sealed class TextureExporter(UTexture texture) : ExporterBase(texture)
                     : TextureFileNamer.Suffix(texture, Session.Options, i);
                 files.Add(new ExportFile(ext, data, suffix));
             }
+        }
+    }
+
+    /// <summary>
+    /// Inverts G in place for a decoded 8-bit texture.
+    /// <para>
+    /// Restricted to 3- and 4-byte strides on purpose: <c>255 - x</c> only means
+    /// "invert" for an 8-bit channel, and silently mangling the low byte of a 16-bit
+    /// or float format would be worse than doing nothing.
+    /// </para>
+    /// </summary>
+    private static void InvertGreenChannel(CTexture texture)
+    {
+        if (!PixelFormatUtils.PixelFormats.TryGetValue(texture.PixelFormat, out var info) || info.NumComponents < 2)
+        {
+            return;
+        }
+
+        var pixels = texture.Width * texture.Height;
+        if (pixels <= 0) return;
+
+        var stride = texture.Data.Length / pixels;
+        if (stride is not (3 or 4)) return;
+
+        for (var i = 1; i < texture.Data.Length; i += stride)
+        {
+            texture.Data[i] = (byte)(255 - texture.Data[i]);
         }
     }
 }

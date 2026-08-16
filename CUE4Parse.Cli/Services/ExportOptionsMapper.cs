@@ -98,6 +98,7 @@ public static class ExportOptionsMapper
             texturePlatform: Pick(flags.TexturePlatform, "--texture-platform", TexturePlatforms),
             textureQuality: flags.TextureQuality,
             exportAllTextureMips: flags.AllMips,
+            flipNormalY: flags.FlipNormalY,
             materialDepth: Pick(flags.MaterialDepth, "--material-depth", MaterialDepths),
             exportMaterials: !flags.NoMaterials,
             socketFormat: Pick(flags.SocketFormat, "--socket-format", SocketFormats),
