@@ -72,6 +72,68 @@ unpackCmd.SetAction(pr => Run(pr, ctx => UnpackCommand.Execute(ctx, new UnpackOp
     Force: pr.GetValue(unpackForceOpt)))));
 root.Subcommands.Add(unpackCmd);
 
+var exportPathsArg = new Argument<string[]>("paths")
+    { Description = "Asset paths", Arity = ArgumentArity.ZeroOrMore };
+var exportOutOpt = new Option<DirectoryInfo>("--output", "-o")
+    { Description = "Output directory", Required = true };
+var meshFormatOpt = new Option<string>("--mesh-format")
+    { Description = "Mesh output format", DefaultValueFactory = _ => "ueformat" };
+var textureFormatOpt = new Option<string>("--texture-format")
+    { Description = "Texture output format", DefaultValueFactory = _ => "png" };
+var texturePlatformOpt = new Option<string>("--texture-platform")
+    { Description = "Source platform for texture deswizzling", DefaultValueFactory = _ => "desktop" };
+var meshQualityOpt = new Option<string>("--mesh-quality")
+    { Description = "LOD selection", DefaultValueFactory = _ => "highest" };
+var naniteOpt = new Option<string>("--nanite")
+    { Description = "Nanite LOD handling", DefaultValueFactory = _ => "no-nanite" };
+var socketFormatOpt = new Option<string>("--socket-format")
+    { Description = "Bone socket handling", DefaultValueFactory = _ => "bone" };
+var materialDepthOpt = new Option<string>("--material-depth")
+    { Description = "Material layer depth", DefaultValueFactory = _ => "top-layer-only" };
+var textureQualityOpt = new Option<int>("--texture-quality")
+    { Description = "Texture quality 1-100", DefaultValueFactory = _ => 100 };
+var noMaterialsOpt = new Option<bool>("--no-materials") { Description = "Skip material export" };
+var allMipsOpt = new Option<bool>("--all-mips") { Description = "Export every texture mip" };
+var parallelOpt = new Option<int>("--parallel")
+    { Description = "Max degree of parallelism", DefaultValueFactory = _ => Environment.ProcessorCount };
+var exportForceOpt = new Option<bool>("--force") { Description = "Bypass the 1000-asset safety limit" };
+
+meshFormatOpt.AcceptOnlyFromAmong("actorx", "gltf2", "ueformat", "usd");
+textureFormatOpt.AcceptOnlyFromAmong("png", "jpeg", "tga", "webp");
+texturePlatformOpt.AcceptOnlyFromAmong("desktop", "xbox-ps4", "switch", "ps5");
+meshQualityOpt.AcceptOnlyFromAmong("highest", "lowest", "all");
+naniteOpt.AcceptOnlyFromAmong("nanite-only", "no-nanite", "nanite-first", "nanite-last");
+socketFormatOpt.AcceptOnlyFromAmong("socket", "bone", "none");
+materialDepthOpt.AcceptOnlyFromAmong("top-layer-only", "all-layers-no-ref", "all-layers");
+
+var exportCmd = new Command("export", "Export meshes, animations, textures and materials");
+exportCmd.Arguments.Add(exportPathsArg);
+CriteriaOptions.AddTo(exportCmd);
+foreach (var option in new Option[]
+{
+    exportOutOpt, meshFormatOpt, textureFormatOpt, texturePlatformOpt, meshQualityOpt,
+    naniteOpt, socketFormatOpt, materialDepthOpt, textureQualityOpt, noMaterialsOpt,
+    allMipsOpt, parallelOpt, exportForceOpt,
+})
+{
+    exportCmd.Options.Add(option);
+}
+
+exportCmd.SetAction(async (pr, ct) => await RunAsync(pr, async ctx => await ExportCommand.ExecuteAsync(ctx,
+    new ExportCommandOptions(
+        Paths: pr.GetValue(exportPathsArg) ?? [],
+        Criteria: CriteriaOptions.Read(pr),
+        Output: pr.GetValue(exportOutOpt)!,
+        Flags: new ExportFlags(
+            pr.GetValue(meshFormatOpt)!, pr.GetValue(textureFormatOpt)!, pr.GetValue(texturePlatformOpt)!,
+            pr.GetValue(meshQualityOpt)!, pr.GetValue(naniteOpt)!, pr.GetValue(socketFormatOpt)!,
+            pr.GetValue(materialDepthOpt)!, pr.GetValue(textureQualityOpt),
+            pr.GetValue(noMaterialsOpt), pr.GetValue(allMipsOpt)),
+        Parallel: pr.GetValue(parallelOpt),
+        Force: pr.GetValue(exportForceOpt)),
+    ct)));
+root.Subcommands.Add(exportCmd);
+
 var parseResult = root.Parse(args);
 
 // System.CommandLine exits 1 on parse errors; the contract requires 2.
@@ -98,7 +160,21 @@ static int Run(ParseResult parseResult, Func<CommandContext, int> body)
     }
 }
 
-// Single classification point, shared with RunAsync (Task 10), so the two
+static async Task<int> RunAsync(ParseResult parseResult, Func<CommandContext, Task<int>> body)
+{
+    ConfigureLogging(parseResult.GetValue(GlobalOptions.Verbose));
+
+    try
+    {
+        return await body(ContextBuilder.Build(parseResult));
+    }
+    catch (Exception ex)
+    {
+        return Classify(ex);  // shared with Run
+    }
+}
+
+// Single classification point, shared by Run and RunAsync, so the two
 // boundaries can never drift apart.
 static int Classify(Exception ex)
 {
