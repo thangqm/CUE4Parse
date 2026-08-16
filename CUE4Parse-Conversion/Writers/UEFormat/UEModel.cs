@@ -139,7 +139,10 @@ public sealed class UEModel : UEFormatExport
         attrs.AddAttribute("TANGENTS", attr => attr.WriteArray(lod.Vertices, (writer, vertex) =>
         {
             var tangent = (FVector) vertex.Tangent;
-            tangent.Normalize();
+            // Exact, matching the NORMALS attribute directly above; FVector.Normalize
+            // goes through MathUtils.InvSqrt and would reintroduce the fast-inverse-
+            // square-root error (~0.175%) here alone.
+            tangent /= MathF.Sqrt(tangent | tangent);
             tangent.Serialize(writer);
         }));
 

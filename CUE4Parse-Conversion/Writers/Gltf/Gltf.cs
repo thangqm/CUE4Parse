@@ -85,7 +85,19 @@ public class Gltf
                     var index = FindVert(srcVert, verts);
                     if (index == -1)  continue;
 
-                    morphBuilder.SetVertexDelta(morphBuilder.Vertices.ElementAt(index), new VertexGeometryDelta(SwapYZ(delta.PositionDelta * UnitScale), Vector3.Zero, SwapYZAndNormalize(delta.TangentZDelta)));
+                    // VertexGeometryDelta is (PositionDelta, NormalDelta, TangentDelta).
+                    // In UE, TangentZ *is* the normal, so it belongs in the second slot.
+                    // It is a difference, not a direction: a typical delta normal has
+                    // length ~0.02, and normalizing it would inflate that fiftyfold.
+                    // glTF requires no unit length here — the renderer normalises
+                    // base + sum(weight * delta) after summation. UnitScale applies to
+                    // positions only.
+                    morphBuilder.SetVertexDelta(
+                        morphBuilder.Vertices.ElementAt(index),
+                        new VertexGeometryDelta(
+                            SwapYZ(delta.PositionDelta * UnitScale),
+                            SwapYZ(delta.TangentZDelta),
+                            Vector3.Zero));
                 }
             }
 
@@ -283,9 +295,13 @@ public class Gltf
 
     public static FVector SwapYZAndNormalize(FVector vec)
     {
-        var res = SwapYZ(vec);
-        res.Normalize();
-        return res;
+        // System.Numerics, not FVector.Normalize: the latter goes through
+        // MathUtils.InvSqrt, a fast inverse square root that models UE's FMath::InvSqrt
+        // to about 0.175%. That is fine inside the engine's own maths and not fine for
+        // a NORMAL accessor a validator checks for unit length. InvSqrt itself stays as
+        // it is — it has callers well outside the write path.
+        var normalized = Vector3.Normalize(new Vector3(vec.X, vec.Z, vec.Y));
+        return new FVector(normalized.X, normalized.Y, normalized.Z);
     }
 
     public static FVector SwapYZ(FVector vec)
