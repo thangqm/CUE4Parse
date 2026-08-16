@@ -19,6 +19,23 @@ public abstract class MeshExporter<T>(T mesh) : ExporterBase(mesh) where T : UOb
     protected MeshExportContext CreateContext(IReadOnlyDictionary<string, string>? materialPaths = null)
         => new(ObjectName, ObjectPath, SaveDirectory, Session.Options, materialPaths);
 
+    /// <summary>
+    /// The default stays <c>--nanite no-nanite</c>: changing it would be a blind bet on
+    /// what the user wants. A warning is never wrong, and on a UE5 title whose meshes
+    /// carry only Nanite geometry the current silence produces a near-empty mesh with no
+    /// explanation.
+    /// </summary>
+    protected void WarnIfNaniteDataIsBeingDropped<TVertex>(MeshDto<TVertex> dto, bool hasNaniteData)
+        where TVertex : struct, IMeshVertex
+    {
+        if (Session.Options.NaniteMeshFormat != ENaniteMeshFormat.NoNanite || !hasNaniteData) return;
+
+        Log.Warning(
+            "Mesh has Nanite data that is being skipped ({LodCount} non-Nanite LOD(s) exported). " +
+            "Pass --nanite nanite-only or --nanite nanite-first to include it.",
+            dto.LODs.Count);
+    }
+
     protected override IReadOnlyList<ExportFile> BuildExportFiles(CancellationToken ct = default)
     {
         Log.Debug("Converting mesh to {Format} at {Quality} quality ({NaniteFormat})", Session.Options.MeshFormat, Session.Options.MeshQuality, Session.Options.NaniteMeshFormat);

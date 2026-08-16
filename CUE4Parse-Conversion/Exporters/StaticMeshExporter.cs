@@ -16,6 +16,9 @@ public sealed class StaticMeshExporter(UStaticMesh originalMesh) : MeshExporter<
             throw new Exception("Static mesh has no LODs");
         }
 
+        WarnIfNaniteDataIsBeingDropped(
+            dto, originalMesh.RenderData?.NaniteResources is { PageStreamingStates.Length: > 0 });
+
         var materialPaths = EnqueueMaterials(dto.Materials);
         return format.BuildStaticMesh(CreateContext(materialPaths), dto);
     }

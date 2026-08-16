@@ -22,6 +22,9 @@ public sealed class SkeletalMeshExporter(USkeletalMesh originalMesh) : MeshExpor
             throw new Exception("Skeletal mesh has no LODs");
         }
 
+        WarnIfNaniteDataIsBeingDropped(
+            dto, originalMesh.NaniteResources is { PageStreamingStates.Length: > 0 });
+
         if (dto.AssetUserData != null)
         {
             foreach (var userData in dto.AssetUserData)
