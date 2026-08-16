@@ -46,15 +46,21 @@ public static partial class BCDecoder
 
         if (c0 > c1)
         {
-            // (x * 683) >> 11 = x/3 for all values in range [0,765]
-            Unsafe.Add(ref dst, 2) = ((2 * r0 + r1) * 683) >> 11 | (((2 * g0 + g1) * 683) >> 19) << 8 | (((2 * b0 + b1) * 683) >> 11) << 16 | 0xFF000000;
-            Unsafe.Add(ref dst, 3) = ((r0 + 2 * r1) * 683) >> 11 | (((g0 + 2 * g1) * 683) >> 19) << 8 | (((b0 + 2 * b1) * 683) >> 11) << 16 | 0xFF000000;
+            // (x * 683) >> 11 = x/3 for all values in range [0,766].
+            // The +1 / +256 terms make this round to nearest rather than truncate:
+            // floor((N+1)/3) is exactly round-half-up. Green needs +256, not +1,
+            // because g0/g1 are kept pre-shifted by 8 (hence >>19 rather than >>11) —
+            // a +1 there is quantized away and changes nothing at all.
+            Unsafe.Add(ref dst, 2) = ((2 * r0 + r1 + 1) * 683) >> 11 | (((2 * g0 + g1 + 256) * 683) >> 19) << 8 | (((2 * b0 + b1 + 1) * 683) >> 11) << 16 | 0xFF000000;
+            Unsafe.Add(ref dst, 3) = ((r0 + 2 * r1 + 1) * 683) >> 11 | (((g0 + 2 * g1 + 256) * 683) >> 19) << 8 | (((b0 + 2 * b1 + 1) * 683) >> 11) << 16 | 0xFF000000;
         }
         else
         {
-            var b2 = (b0 + b1) >> 1;
-            var g2 = (g0 + g1) >> 9;
-            var r2 = (r0 + r1) >> 1;
+            // Three-colour block: a midpoint and a transparent slot. Rounded to nearest
+            // for the same reason and on the same scale as the interpolants above.
+            var b2 = (b0 + b1 + 1) >> 1;
+            var g2 = (g0 + g1 + 256) >> 9;
+            var r2 = (r0 + r1 + 1) >> 1;
             Unsafe.Add(ref dst, 2) = r2 | g2 << 8 | b2 << 16 | 0xFF000000;
             Unsafe.Add(ref dst, 3) = 0;
         }
@@ -80,8 +86,11 @@ public static partial class BCDecoder
         uint g1 = (g >> 16) & 0xFF00;
         Unsafe.Add(ref dst, 1) = r1 | g1 | (b1 << 16);
 
-        Unsafe.Add(ref dst, 2) = ((2 * r0 + r1) * 683) >> 11 | (((2 * g0 + g1) * 683) >> 19) << 8 | (((2 * b0 + b1) * 683) >> 11) << 16;
-        Unsafe.Add(ref dst, 3) = ((r0 + 2 * r1) * 683) >> 11 | (((g0 + 2 * g1) * 683) >> 19) << 8 | (((b0 + 2 * b1) * 683) >> 11) << 16;
+        // Rounded to nearest, identically to ReadColorsBC1's interpolating branch —
+        // BC2/BC3 share this reader and must not drift from BC1. See the note there
+        // on why green's term is +256.
+        Unsafe.Add(ref dst, 2) = ((2 * r0 + r1 + 1) * 683) >> 11 | (((2 * g0 + g1 + 256) * 683) >> 19) << 8 | (((2 * b0 + b1 + 1) * 683) >> 11) << 16;
+        Unsafe.Add(ref dst, 3) = ((r0 + 2 * r1 + 1) * 683) >> 11 | (((g0 + 2 * g1 + 256) * 683) >> 19) << 8 | (((b0 + 2 * b1 + 1) * 683) >> 11) << 16;
     }
 
 
@@ -111,16 +120,20 @@ public static partial class BCDecoder
         }
         else
         {
-            // (x * 1636) >> 13 = x/5 in [0,1277]
+            // (x * 1639) >> 13 = x/5 in [0,1277].
+            // NOT 1636: 1636 * 5 == 8180 < 8192, so that multiplier undershoots
+            // floor(x/5) by one on 374 of the 1278 reachable values — every multiple
+            // of five among them. 1639 * 5 == 8195 >= 8192 and is exact over the whole
+            // range. See docs/reports/bc-interpolant-rounding.md.
             var diff = c1 - c0;
             var temp0 = 4 * c0 + c1 + 2;
-            cl |= (ulong) ((temp0 * 1636) >> 13) << 16;
+            cl |= (ulong) ((temp0 * 1639) >> 13) << 16;
             temp0 += diff;
-            cl |= (ulong) ((temp0 * 1636) >> 13) << 24;
+            cl |= (ulong) ((temp0 * 1639) >> 13) << 24;
             temp0 += diff;
-            cl |= (ulong) ((temp0 * 1636) >> 13) << 32;
+            cl |= (ulong) ((temp0 * 1639) >> 13) << 32;
             temp0 += diff;
-            cl |= (ulong) ((temp0 * 1636) >> 13) << 40;
+            cl |= (ulong) ((temp0 * 1639) >> 13) << 40;
             cl |= 0xFF00000000000000;
         }
         return cl;

@@ -204,11 +204,30 @@ interpolant sai. Hệ số đúng là **1639**. Nhánh `/7` (`9365 >> 16`) thì 
 toàn dải, nên đây là nhầm lẫn chứ không phải đánh đổi tốc độ. **BC5 là format của
 normal map**, nên nó chạm đúng những file lệch nhiều nhất trong bảng đo ở trên.
 
-**Đề xuất cho agent — không đổi công thức (đã thực hiện):**
-1. **Giữ nguyên decoder.** Sửa sẽ đổi byte của mọi texture BC cho *mọi* consumer của CUE4Parse; và câu hỏi "có cố ý bỏ làm tròn ở DXT3/DXT5 không" chỉ tác giả `ea938ba8` trả lời được.
-2. **Khoá hành vi bằng test vét cạn** — đã có: [`CUE4Parse.Tests/BCDecoderTests.cs`](../../CUE4Parse.Tests/BCDecoderTests.cs), vét cạn toàn bộ không gian endpoint thật (1024 cặp đỏ, 4096 cặp lục, 1024 cặp lam, 65536 cặp alpha), ngưỡng **0** so với *hành vi hiện tại* — không phải "≤ 1" như đề xuất cũ, vì ngưỡng ≤ 1 là ngưỡng mà **cả** công thức cắt xuống lẫn công thức làm tròn đều qua, tức là một test không phân biệt được hai bên.
-3. **Báo cáo lên upstream:** [`docs/reports/bc-interpolant-rounding.md`](bc-interpolant-rounding.md) — soạn xong, **chưa gửi**.
-4. Ghi vào tài liệu rằng byte texture **không** ổn định giữa các phiên bản CUE4Parse — đã có trong [output contract](../cue4-output-contract.md) §8. Đừng bao giờ so hash texture giữa hai version; hãy so `--manifest`.
+**Quyết định cuối (đã đổi so với bản trước) — SỬA, vì tool này dùng nội bộ:**
+
+Bản trước khuyên "giữ nguyên decoder", với lý do chính là sửa sẽ đổi byte cho *mọi*
+consumer của CUE4Parse. Lý do đó áp dụng cho **upstream**, không áp dụng cho fork dùng
+nội bộ: ở đây tiêu chí là **đúng số học**, không phải trùng byte với upstream. Cả hai lỗi
+vì thế **đã được sửa trong nhánh này**:
+
+1. `1639` thay `1636` — sửa lỗi §2 (chia cho 5 sai).
+2. `+1` cho đỏ/lam và **`+256`** cho lục trong `ReadColorsBC1` và `ReadColorsBC3` — làm
+   tròn tới gần nhất, trả lại hành vi mà DXT3/DXT5 vốn có trước `ea938ba8`.
+3. Midpoint của nhánh punchthrough BC1 cũng làm tròn, để không tạo ra bất nhất mới ngay
+   trong cùng một hàm.
+
+Hệ quả phải chấp nhận và đã ghi rõ:
+
+- **Output decoder của fork này khác upstream một cách có chủ đích.** Xem
+  [`bc-interpolant-rounding.md`](bc-interpolant-rounding.md) — vẫn là văn bản issue sẵn
+  sàng gửi, **chưa gửi**.
+- [`CUE4Parse.Tests/BCDecoderTests.cs`](../../CUE4Parse.Tests/BCDecoderTests.cs) nay
+  assert **số học chính xác** (round-half-up, ngưỡng 0) chứ không còn "khoá hành vi hiện
+  tại". Nếu một lần merge upstream mang lỗi quay lại, build sẽ đỏ.
+- Byte texture vẫn **không** ổn định giữa các phiên bản — đã ghi trong
+  [output contract](../cue4-output-contract.md) §8. Đừng so hash texture giữa hai
+  version; hãy so `--manifest`.
 
 ---
 

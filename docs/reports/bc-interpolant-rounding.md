@@ -1,20 +1,25 @@
 # BC1–BC5 interpolant rounding: one regression and one incorrect reciprocal
 
-> **Status:** not yet filed upstream. Intended as issue text for
-> `FabianFG/CUE4Parse`. Record the issue URL here once filed, so
-> `CUE4Parse.Tests/BCDecoderTests.cs` can point its failure messages at a real
-> discussion.
+> **Status:** **both defects are fixed in this fork.** Not yet filed upstream —
+> this remains ready-to-send issue text for `FabianFG/CUE4Parse`, and the patch
+> below is what we actually applied. Record the issue URL here once filed.
+>
+> **This means our decoder output deliberately differs from upstream's.** That
+> is the intended trade: this fork is used locally, where being arithmetically
+> correct matters more than matching upstream byte-for-byte.
+> `CUE4Parse.Tests/BCDecoderTests.cs` now asserts exact round-half-up against
+> the exact rational — so it goes red if an upstream merge reintroduces either
+> defect, which is the real reason to keep this document.
 
 Commit [`ea938ba8`](https://github.com/FabianFG/CUE4Parse/commit/ea938ba8) —
 "Optimize BC1–BC5 decoders for 3–5× speedup", 2026-08-04 — replaced `DXTDecoder`
 with `BCDecoder` for DXT1/DXT3/DXT5 and rewrote `BCDecoder`'s alpha path to use
 reciprocal multiplies. It changed decoded pixel values in two ways that look
-unintended. Both are pinned by `CUE4Parse.Tests/BCDecoderTests.cs`, so whatever
-is decided here becomes visible as a red build rather than as a render surprise
+unintended. Both are covered exhaustively by `CUE4Parse.Tests/BCDecoderTests.cs`,
+so either one reappearing becomes a red build rather than a render surprise
 months later.
 
-Nothing in this report has been changed in the decoder. See "Why we are not
-sending a PR" at the end.
+The applied patch is in "What we changed" at the end.
 
 ---
 
@@ -123,26 +128,50 @@ rather than sampling: BC1/BC3 endpoints are 5/6/5 bits (1024 red pairs, 4096
 green pairs, 1024 blue pairs) and BC4/BC5 endpoints are 8 bits (65536 pairs).
 Every count quoted above is asserted there.
 
-- `Bc1RedAndBlueInterpolantsTruncate`, `Bc1GreenInterpolantsTruncate`,
-  `Bc3ColourInterpolantsMatchBc1Exactly` — pin §1's current behaviour.
-- `Bc1TruncatesWhereBc4Rounds` — pins the asymmetry itself.
-- `Bc4And5EightValueAlphaInterpolantsAreExactlyRounded` — pins that the `/7`
-  path *is* exact, which is what makes §2 a defect rather than a design choice.
-- `Bc4And5SixValueInterpolantsUndershootExactDivisionByFive` — pins §2, with the
-  three counts above as the witness.
+Every assertion compares against **exact round-half-up of the exact rational**,
+threshold zero. "Within 1" would be useless: it is a threshold that the
+truncating form, the rounding form and the off-by-one form all pass.
+
+- `Bc1RedAndBlueInterpolantsRoundToNearest`, `Bc1GreenInterpolantsRoundToNearest`,
+  `Bc3ColourInterpolantsMatchBc1Exactly`,
+  `Bc2And3InterpolateEvenWhenTheEndpointsAreEqualOrAscending` — §1.
+- `Bc1AndBc4UseTheSameRoundingPolicy` — the asymmetry itself, now absent.
+- `Bc1PunchthroughMidpointRoundsToNearest` — the 3-colour branch.
+- `Bc4And5EightValueAlphaInterpolantsAreExactlyRounded` — the `/7` path, exact
+  before and after; this is what makes §2 a defect rather than a design choice.
+- `Bc4And5SixValueAlphaInterpolantsAreExactlyRounded` — §2.
 
 The tests reach the two private colour readers through `BCDecoderProbe` in
 `BCDecoder.cs`. Note that BC1 only runs its interpolating branch when the first
 endpoint word is strictly the larger; equal or ascending endpoints take the
-3-colour punchthrough branch, which is pinned separately.
+3-colour punchthrough branch, which is covered separately.
 
 ---
 
-## Why we are not sending a PR
+## What we changed
 
-Fixing either issue changes the bytes of every BC1/BC2/BC3/BC4/BC5 texture for
-every CUE4Parse consumer. That is upstream's call, not a downstream fork's, and
-§1 in particular is a question about intent — whether DXT3/DXT5's rounding was
-meant to be dropped — that only the author of `ea938ba8` can answer. §2 looks
-like a plain mistake and we would send a patch for it on request; the one-word
-change is `1636` → `1639`.
+Three edits in `CUE4Parse-Conversion/Textures/BC/BCDecoder.cs`:
+
+1. **`DecodeBCColors`, 6-value branch:** `1636` → `1639`. One token. Fixes §2.
+2. **`ReadColorsBC1`, interpolating branch:** `+1` on the red and blue
+   numerators, **`+256`** on green. Fixes §1 without falling into the green
+   trap.
+3. **`ReadColorsBC1`, punchthrough branch, and `ReadColorsBC3`:** the same
+   rounding, for consistency. Rounding the interpolants while leaving the
+   midpoint truncating would create a fresh inconsistency inside one function —
+   exactly the failure mode described above.
+
+`ReadColorsBC3` is shared by BC2 and BC3, so both are covered by edit 3.
+
+No behaviour outside these expressions changed. The whole test suite is green,
+including the fixture texture-decode tests that compare decoded bitmaps against
+deterministic ImageMagick references — the change is within their tolerances and
+moves output toward those references, not away.
+
+## Why this is not a PR yet
+
+Changing this alters the bytes of every BC1–BC5 texture for every CUE4Parse
+consumer, and §1 is partly a question about intent — whether DXT3/DXT5's
+rounding was meant to be dropped — that only the author of `ea938ba8` can
+answer. §2 is a plain mistake and the patch is one token; we would send it
+immediately on request.

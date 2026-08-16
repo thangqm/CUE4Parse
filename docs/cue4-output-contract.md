@@ -152,7 +152,12 @@ key: in that case cue4 genuinely cannot tell whether the asset exists.
 These are explicitly **not** promised, and a consumer that relies on them will break:
 
 - **Texture bytes are not stable across CUE4Parse versions.** Block-compression decoding
-  has changed before and may change again.
+  has changed before and may change again. Note also that **this build's BC decoder
+  deliberately differs from upstream `FabianFG/CUE4Parse`**: two arithmetic defects in
+  `ea938ba8` are fixed here (BC1/BC2/BC3 round to nearest rather than truncating, and
+  BC4/BC5's divide-by-five uses the correct reciprocal). Decoded BC output is therefore
+  correct to ±0 against exact round-half-up, but will not match an upstream build
+  byte-for-byte. See [reports/bc-interpolant-rounding.md](reports/bc-interpolant-rounding.md).
 - **NDJSON line order is undefined.** The export session is parallel. Use `--manifest`
   for an ordered, diffable view.
 - **glTF `nodes` order is not committed.** `skins[].joints` order *is*.

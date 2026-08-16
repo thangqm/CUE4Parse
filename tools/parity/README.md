@@ -106,9 +106,14 @@ Three things about that command are load-bearing:
   command exits 5.
 
 The manifest records sha256es of **texture** bytes too, so this baseline will
-legitimately change when the BC decoder changes upstream. That is the point: it makes
-such a change visible and dated instead of silent. The `tool` field carries the
-assembly version, so a version bump also shows up here.
+legitimately change whenever the BC decoder changes. That is the point: it makes such a
+change visible and dated instead of silent. The `tool` field carries the assembly
+version, so a version bump also shows up here.
+
+As currently generated the baseline covers meshes only — the fixture meshes have no
+material assigned, so the export produces no textures (contract, "Verification gaps").
+It is therefore *not* sensitive to decoder changes today. If you extend it to cover
+textures, remember this build's BC decoder intentionally diverges from upstream's.
 
 The manifest records sha256es of **texture** bytes too, so this baseline will
 legitimately change when the BC decoder changes upstream. That is the point: it makes
