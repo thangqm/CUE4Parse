@@ -21,8 +21,17 @@ public static class GltfValidator
     {
         Assert.True(TryLocate(out var exe), "GLTF_VALIDATOR is not set to an existing file.");
 
-        using var process = Process.Start(new ProcessStartInfo(exe, ["-o", "-r", "-a", glbPath])
+        // Run from the .glb's own directory and pass a bare file name. The validator
+        // resolves a referenced resource's relative URI against the *working directory*,
+        // not against the asset — verified: the same file reports 0 errors from one cwd
+        // and 14 IO_ERROR "Resource not found" from a deeper one, with every referenced
+        // file present on disk both times. Anchoring the cwd makes resolution mean what
+        // a glTF consumer means by it.
+        var directory = Path.GetDirectoryName(Path.GetFullPath(glbPath))!;
+
+        using var process = Process.Start(new ProcessStartInfo(exe, ["-o", "-r", "-a", Path.GetFileName(glbPath)])
         {
+            WorkingDirectory = directory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         })!;
