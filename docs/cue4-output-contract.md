@@ -184,5 +184,17 @@ Honest limits of what CI checks.
   claim "a Wwise asset exports to a `.wem` starting with `RIFF` whose size matches the
   source chunks" has only been checked by hand against a real Wwise title. Re-check it by
   hand when touching `SoundExporter` or `SoundDecoder`.
-- **ACL-compressed animation decode is not covered.** The fixture set contains none, and
-  game assets are not redistributable.
+- **ACL-compressed animation decode is not covered by CI.** `cue4 info` reports whether
+  the ACL feature is compiled in, and that reporting *is* tested
+  (`AclReportingMatchesTheNativeLibraryState` asserts `acl` against
+  `CUE4ParseNatives.IsFeatureAvailable`, and that `acl` can never be true without a
+  loaded library). Decoding an actual ACL-compressed animation is not tested: ACL
+  compression requires a UE plugin, the fixture set contains no ACL-compressed
+  animation, and game assets are not redistributable. So the plumbing is proven honest
+  and decompression is not proven to work at all. Verify by hand against a real ACL
+  title when touching animation decompression.
+- **The native library is built by a deliberately non-fatal CMake step.** A machine
+  without CMake, or with an uninitialised `ACL/external/acl` submodule, silently gets
+  `library: false` / `acl: false` and degraded animation support rather than a failed
+  build. `cue4 info` is the way to tell which you have — check it before concluding an
+  animation decoded wrongly.
