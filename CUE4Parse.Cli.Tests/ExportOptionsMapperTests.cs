@@ -4,6 +4,7 @@ using CUE4Parse.Cli.Services;
 using CUE4Parse.UE4.Assets.Exports.Material;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse_Conversion.Options;
+using CUE4Parse_Conversion.Writers.UEFormat.Enums;
 
 namespace CUE4Parse.Cli.Tests;
 
@@ -87,4 +88,31 @@ public class ExportOptionsMapperTests
         Assert.Equal(ExitCode.Usage, ex.ExitCode);
         Assert.Equal("BAD_OPTION", ex.ErrorCode);
     }
+
+    [Fact]
+    public void CompressionFormatDefaultsToNoneAndMapsByName()
+    {
+        Assert.Equal(EFileCompressionFormat.None, ExportOptionsMapper.Map(Ueformat()).CompressionFormat);
+        Assert.Equal(EFileCompressionFormat.ZSTD,
+            ExportOptionsMapper.Map(Ueformat() with { CompressionFormat = "zstd" }).CompressionFormat);
+        Assert.Equal(EFileCompressionFormat.GZIP,
+            ExportOptionsMapper.Map(Ueformat() with { CompressionFormat = "gzip" }).CompressionFormat);
+    }
+
+    [Fact]
+    public void MorphTargetsAreExportedUnlessTheFlagOptsOut()
+    {
+        Assert.True(ExportOptionsMapper.Map(Ueformat()).ExportMorphTargets);
+        Assert.False(ExportOptionsMapper.Map(Ueformat() with { NoMorphTargets = true }).ExportMorphTargets);
+    }
+
+    [Fact]
+    public void HdrIsKeptUnlessTheFlagOptsOutAndIsAlwaysOffForGltf2()
+    {
+        Assert.True(ExportOptionsMapper.Map(Ueformat()).ExportHdrTexturesAsHdr);
+        Assert.False(ExportOptionsMapper.Map(Ueformat() with { NoHdr = true }).ExportHdrTexturesAsHdr);
+        Assert.False(ExportOptionsMapper.Map(ExportFlagDefaults.Gltf2()).ExportHdrTexturesAsHdr);
+    }
+
+    private static ExportFlags Ueformat() => ExportFlagDefaults.Gltf2() with { MeshFormat = "ueformat" };
 }

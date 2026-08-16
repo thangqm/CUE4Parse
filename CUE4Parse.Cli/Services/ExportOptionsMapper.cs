@@ -3,6 +3,7 @@ using CUE4Parse.Cli.Output;
 using CUE4Parse.UE4.Assets.Exports.Material;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse_Conversion.Options;
+using CUE4Parse_Conversion.Writers.UEFormat.Enums;
 
 namespace CUE4Parse.Cli.Services;
 
@@ -66,6 +67,13 @@ public static class ExportOptionsMapper
         ["none"] = ESocketFormat.None,
     };
 
+    public static readonly Dictionary<string, EFileCompressionFormat> CompressionFormats = new()
+    {
+        ["none"] = EFileCompressionFormat.None,
+        ["gzip"] = EFileCompressionFormat.GZIP,
+        ["zstd"] = EFileCompressionFormat.ZSTD,
+    };
+
     public static ExportOptions Map(ExportFlags flags)
     {
         var meshFormat = Pick(flags.MeshFormat, "--mesh-format", MeshFormats);
@@ -92,7 +100,11 @@ public static class ExportOptionsMapper
             exportAllTextureMips: flags.AllMips,
             materialDepth: Pick(flags.MaterialDepth, "--material-depth", MaterialDepths),
             exportMaterials: !flags.NoMaterials,
-            socketFormat: Pick(flags.SocketFormat, "--socket-format", SocketFormats));
+            socketFormat: Pick(flags.SocketFormat, "--socket-format", SocketFormats),
+            exportMorphTargets: !flags.NoMorphTargets,
+            exportHdrTexturesAsHdr: !flags.NoHdr,
+            // ExportOptions already drops this for anything but UEFormat, so no second guard here.
+            compressionFormat: Pick(flags.CompressionFormat, "--compression-format", CompressionFormats));
     }
 
     private static T Pick<T>(string value, string flagName, Dictionary<string, T> map)

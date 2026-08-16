@@ -14,7 +14,11 @@ public sealed record ExportFlags(
     string MaterialDepth,
     int TextureQuality,
     bool NoMaterials,
-    bool AllMips);
+    bool AllMips,
+    // Defaulted so ExportFlagDefaults and every existing call site keep compiling.
+    string CompressionFormat = "none",
+    bool NoMorphTargets = false,
+    bool NoHdr = false);
 
 public sealed record ExportCommandOptions(
     string[] Paths,

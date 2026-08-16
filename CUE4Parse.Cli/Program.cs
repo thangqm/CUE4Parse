@@ -79,6 +79,13 @@ var textureQualityOpt = new Option<int>("--texture-quality")
     { Description = "Texture quality 1-100", DefaultValueFactory = _ => 100 };
 var noMaterialsOpt = new Option<bool>("--no-materials") { Description = "Skip material export" };
 var allMipsOpt = new Option<bool>("--all-mips") { Description = "Export every texture mip" };
+var compressionFormatOpt = new Option<string>("--compression-format")
+    { Description = "UEFormat file compression", DefaultValueFactory = _ => "none" };
+var noMorphTargetsOpt = new Option<bool>("--no-morph-targets") { Description = "Skip morph targets" };
+var noHdrOpt = new Option<bool>("--no-hdr")
+    { Description = "Write HDR sources in the raster format instead of .hdr (no effect with --mesh-format gltf2)" };
+
+compressionFormatOpt.AcceptOnlyFromAmong([.. ExportOptionsMapper.CompressionFormats.Keys]);
 var parallelOpt = new Option<int>("--parallel")
     { Description = "Max degree of parallelism", DefaultValueFactory = _ => Environment.ProcessorCount };
 
@@ -99,7 +106,7 @@ foreach (var option in new Option[]
 {
     TargetOptions.OutputDir, meshFormatOpt, textureFormatOpt, texturePlatformOpt, meshQualityOpt,
     naniteOpt, socketFormatOpt, materialDepthOpt, textureQualityOpt, noMaterialsOpt,
-    allMipsOpt, parallelOpt,
+    allMipsOpt, parallelOpt, compressionFormatOpt, noMorphTargetsOpt, noHdrOpt,
 })
 {
     exportCmd.Options.Add(option);
@@ -120,7 +127,10 @@ exportCmd.SetAction((pr, ct) => RunAsync(pr, ctx => ExportCommand.ExecuteAsync(c
             MaterialDepth: pr.GetValue(materialDepthOpt)!,
             TextureQuality: pr.GetValue(textureQualityOpt),
             NoMaterials: pr.GetValue(noMaterialsOpt),
-            AllMips: pr.GetValue(allMipsOpt)),
+            AllMips: pr.GetValue(allMipsOpt),
+            CompressionFormat: pr.GetValue(compressionFormatOpt)!,
+            NoMorphTargets: pr.GetValue(noMorphTargetsOpt),
+            NoHdr: pr.GetValue(noHdrOpt)),
         Parallel: pr.GetValue(parallelOpt),
         Force: pr.GetValue(TargetOptions.Force)),
     ct)));
