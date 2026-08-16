@@ -51,6 +51,27 @@ dumpCmd.SetAction(pr => Run(pr, ctx => DumpCommand.Execute(ctx, new DumpOptions(
     Force: pr.GetValue(dumpForceOpt)))));
 root.Subcommands.Add(dumpCmd);
 
+var unpackPathsArg = new Argument<string[]>("paths")
+    { Description = "Asset paths", Arity = ArgumentArity.ZeroOrMore };
+var unpackOutOpt = new Option<DirectoryInfo>("--output", "-o")
+    { Description = "Output directory", Required = true };
+var unpackFlatOpt = new Option<bool>("--flat") { Description = "Ignore directory structure" };
+var unpackForceOpt = new Option<bool>("--force") { Description = "Bypass the 1000-asset safety limit" };
+
+var unpackCmd = new Command("unpack", "Extract raw asset bytes");
+unpackCmd.Arguments.Add(unpackPathsArg);
+CriteriaOptions.AddTo(unpackCmd);
+unpackCmd.Options.Add(unpackOutOpt);
+unpackCmd.Options.Add(unpackFlatOpt);
+unpackCmd.Options.Add(unpackForceOpt);
+unpackCmd.SetAction(pr => Run(pr, ctx => UnpackCommand.Execute(ctx, new UnpackOptions(
+    Paths: pr.GetValue(unpackPathsArg) ?? [],
+    Criteria: CriteriaOptions.Read(pr),
+    Output: pr.GetValue(unpackOutOpt)!,
+    Flat: pr.GetValue(unpackFlatOpt),
+    Force: pr.GetValue(unpackForceOpt)))));
+root.Subcommands.Add(unpackCmd);
+
 var parseResult = root.Parse(args);
 
 // System.CommandLine exits 1 on parse errors; the contract requires 2.
