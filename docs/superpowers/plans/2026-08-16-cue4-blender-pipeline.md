@@ -6,11 +6,13 @@
 
 **Architecture:** Material binding happens inside `CUE4Parse-Conversion/Writers/Gltf/`, not as a CLI post-process. A new pure `GltfMaterialBinder` turns a `CMaterialParams2` into a SharpGLTF `MaterialBuilder` whose images are **external URIs** (never embedded), computed from the same texture classification `MaterialExporter` already uses, so the referenced files and the written files are the same set by construction. A new `MeshExportContext` record carries `SaveDirectory` and `ExportOptions` into the writers. A new `TextureFileNamer` is the single predictor of texture file names. The CLI grows a deterministic manifest; the library stays ignorant of it.
 
-**Tech Stack:** .NET 10, SharpGLTF.Core / SharpGLTF.Toolkit 1.0.6, SkiaSharp 2.88.9, System.CommandLine 2.0.11, Newtonsoft.Json, Serilog, xunit.v3, glTF-Validator (pinned standalone binary).
+**Tech Stack:** .NET 10, SharpGLTF.Core / SharpGLTF.Toolkit 1.0.6, SkiaSharp 2.88.9, System.CommandLine 2.0.11, Newtonsoft.Json, Serilog, xunit.v3, glTF-Validator (pinned standalone binary), Blender (pinned tarball, headless).
 
-**Spec:** [docs/superpowers/specs/2026-08-16-cue4-blender-pipeline-design.md](../specs/2026-08-16-cue4-blender-pipeline-design.md)
+**Spec:** [docs/superpowers/specs/2026-08-16-cue4-blender-pipeline-design.md](../specs/2026-08-16-cue4-blender-pipeline-design.md) — **read revision 3's header note first**; the design review changed the substrate, the scope and the target.
 
 **Branch:** `worktree-feat-cue4-cli`, in the worktree at `.claude/worktrees/feat-cue4-cli`. All paths below are relative to that worktree root.
+
+**Target for this round: Phase 0 + Phase 1.** Together they deliver the one thing that matters — a `.glb` that opens in Blender with textures — and after revision 3 they are fully verifiable on the fixtures that exist. Phases 2 and 3 are conveniences; decide on them after using Phase 1 output for real work. Task 17 has been rewritten from a behaviour change into a characterization test (spec §6.2).
 
 ---
 
@@ -24,7 +26,9 @@
 - Exit codes: `0` success, `1` unclassified, `2` usage, `3` config, `4` mount, `5` AES key, `6` mappings, `7` not found, `8` partial export failure.
 - Class names must be globally unique across the assembly graph (`ObjectTypeRegistry`). This does not apply to exporters/formats, which are not `IPropertyHolder`.
 - Game-specific serialization quirks stay inline as `if (Ar.Game == GAME_X)`. Do not introduce new abstractions for them.
-- **Only two upstream-owned files may be modified across this whole plan beyond the conversion/CLI sources:** `CLAUDE.md` and `docs/`. In particular **do not edit `.github/workflows/tests.yml`** — CI for the CLI goes into a new `cli-tests.yml` so `git pull --rebase` against upstream keeps a zero conflict surface.
+- **Fork first.** `origin` is `FabianFG/CUE4Parse` directly. This plan modifies ~14 files in the conversion layer that upstream touches ~66 times a year, with signature-breaking changes. Before Task 1: fork to your own remote and rebase `worktree-feat-cue4-cli` onto it. Spec §4.6 sorts the changes into a PR-upstream bucket and a keep-local bucket; tag each commit's body with which bucket it belongs to, so the PR series can be assembled later without archaeology.
+- **Still do not edit `.github/workflows/tests.yml`** — CI for the CLI goes into a new `cli-tests.yml`. That file is upstream-owned and touching it buys nothing.
+- **The fixture set is read-only.** There is no UE 5.8 and no `CUE4ParseFixtures` project on this machine (spec §9.1). No task may assume a fixture can be added. Where the fixtures fall short, tests synthesize objects instead — that is why `GltfMaterialBinder.Bind` takes a `CMaterialParams2` (Task 5).
 - Set `CUE4PARSE_SKIP_NATIVE=true` when iterating on managed code to skip the CMake native step.
 - Run a single test:
   `dotnet run --project CUE4Parse.Cli.Tests/CUE4Parse.Cli.Tests.csproj -- --filter-method "*TestName*"`
@@ -136,6 +140,25 @@ Write the tag (without a leading `v` if the tag has none) into `tools/gltf-valid
 ```
 
 Do **not** use the `gltf-validator` npm package: it exposes a JavaScript API rather than a CLI, so "one npm step" is really npm plus a hand-written JS driver.
+
+- [ ] **Step 2b: Pin the Blender version**
+
+Same shape, same reason. Spec §9.2 makes Blender a verification dependency because goal
+condition #1 — "opens in Blender showing textures" — is otherwise checked by nothing, and
+glTF-Validator structurally cannot check it: it does not resolve URIs the way Blender's
+importer does, does not decode PNG payloads, and has no concept of a shader node.
+
+Write a single line into `tools/blender.version`, e.g.:
+
+```
+4.2.5
+```
+
+Pick an LTS. The download URL used in Step 5 is
+`https://download.blender.org/release/Blender<MAJOR.MINOR>/blender-<VERSION>-linux-x64.tar.xz`,
+so the version string must match a real release directory. Pinning is not optional here for
+the same reason it was not for the validator: "imports cleanly into Blender" only means
+something against a Blender that does not move underneath the claim.
 
 - [ ] **Step 3: Write the validator wrapper and its failing test**
 
@@ -289,6 +312,18 @@ jobs:
           tar -xJf /tmp/gltf_validator.tar.xz -C /tmp/gltf-validator
           echo "GLTF_VALIDATOR=/tmp/gltf-validator/gltf_validator" >> "$GITHUB_ENV"
           /tmp/gltf-validator/gltf_validator --version
+
+      - name: Install pinned Blender
+        run: |
+          set -euo pipefail
+          VERSION="$(cat tools/blender.version)"
+          SERIES="${VERSION%.*}"
+          URL="https://download.blender.org/release/Blender${SERIES}/blender-${VERSION}-linux-x64.tar.xz"
+          curl -fsSL "$URL" -o /tmp/blender.tar.xz
+          mkdir -p /tmp/blender
+          tar -xJf /tmp/blender.tar.xz -C /tmp/blender --strip-components=1
+          echo "BLENDER=/tmp/blender/blender" >> "$GITHUB_ENV"
+          /tmp/blender/blender --version
 
       - name: Run CLI tests
         run: dotnet test CUE4Parse.Cli.Tests/CUE4Parse.Cli.Tests.csproj --configuration Release --logger "console;verbosity=normal"
@@ -906,8 +941,23 @@ git commit -m "feat: single source of truth for texture file names, and glTF tex
 **Interfaces:**
 - Consumes: `CMaterialParams2`, `ExporterBase.Resolve`, `TextureFileNamer`, `OrmTextureExporter.OrmSuffix` (a `const string` — Task 7 adds the exporter; declare the constant here in Task 7's file and reference it, or temporarily inline `"_ORM"` and switch to the constant in Task 7. Prefer creating the constant now inside `GltfMaterialBinder` as `public const string OrmSuffix = "_ORM";` and having Task 7's exporter consume it — one owner, no forward reference).
 - Produces:
-  - `public static MaterialBuilder GltfMaterialBinder.Bind(UMaterialInterface material, string slotName, ExportOptions options, string meshSaveDirectory)`
+  - `public static MaterialBuilder GltfMaterialBinder.Bind(UMaterialInterface material, CMaterialParams2 parameters, string slotName, ExportOptions options, string meshSaveDirectory)`
   - `public const string GltfMaterialBinder.OrmSuffix = "_ORM"`
+
+> **The caller supplies `parameters`; the binder does not call `GetParams` itself.**
+> This is the change that makes the binder testable at all. The fixture material
+> `M_Fixture` has one texture parameter whose name matches no classification table and no
+> regex fallback, and there is no normal map, no SpecularMasks source, no emissive and no
+> masked material anywhere in the fixture set — nor any way to add one (spec §9.1). A
+> binder that resolved its own parameters could therefore only ever be tested on a single
+> accidental base-color path. Taking `CMaterialParams2` lets the tests below fabricate
+> every channel and every `EBlendMode` with no asset at all.
+>
+> `material` is still needed alongside it: `CMaterialParams2` carries `BlendMode` but
+> **not** `TwoSided` and **not** `OpacityMaskClipValue`, which §5.3 requires.
+>
+> Spec §4.4's guarantee gets stronger, not weaker — binder and `MaterialExporter` no longer
+> merely make matching `GetParams` calls, they share one object.
   - `internal static ImageBuilder GltfMaterialBinder.CreateImage(string uri)`
   - `internal static string ExporterBase.Resolve(UObject obj, string fromDirectory, string extension, string? nameSuffix)`
 
@@ -931,8 +981,34 @@ public class GltfMaterialBinderTests
         FixtureAssets.LoadExport<UMaterialInterface>(
             $"CUE4ParseFixtures/Content/Fixtures/Materials/{name}.uasset", name);
 
-    private static MaterialBuilder Bind(string name, string meshSaveDirectory = "CUE4ParseFixtures/Content/Fixtures/Meshes") =>
-        GltfMaterialBinder.Bind(Fixture(name), "Primary", new ExportOptions(meshFormat: EMeshFormat.Gltf2), meshSaveDirectory);
+    /// <summary>
+    /// Binds a real fixture material. Only useful for the base-color path: the fixture set
+    /// has no normal map, no SpecularMasks source, no emissive and no masked material, and
+    /// cannot be extended (spec §9.1). Everything else uses <see cref="BindSynthetic"/>.
+    /// </summary>
+    private static MaterialBuilder Bind(string name, string meshSaveDirectory = "CUE4ParseFixtures/Content/Fixtures/Meshes")
+    {
+        var material = Fixture(name);
+        var options = new ExportOptions(meshFormat: EMeshFormat.Gltf2);
+        var parameters = new CMaterialParams2();
+        material.GetParams(parameters, options.MaterialDepth);
+        return GltfMaterialBinder.Bind(material, parameters, "Primary", options, meshSaveDirectory);
+    }
+
+    /// <summary>
+    /// Binds a fabricated parameter set. This is how every channel, every <c>EBlendMode</c>
+    /// and the ORM swizzle get covered without an asset that does not exist.
+    /// </summary>
+    private static MaterialBuilder BindSynthetic(
+        Action<CMaterialParams2> configure,
+        UMaterialInterface? material = null,
+        string meshSaveDirectory = "CUE4ParseFixtures/Content/Fixtures/Meshes")
+    {
+        var options = new ExportOptions(meshFormat: EMeshFormat.Gltf2);
+        var parameters = new CMaterialParams2();
+        configure(parameters);
+        return GltfMaterialBinder.Bind(material ?? Fixture("M_Fixture"), parameters, "Primary", options, meshSaveDirectory);
+    }
 
     [Fact]
     public void BoundMaterialKeepsTheSlotNameAndUsesTheMetallicRoughnessShader()
@@ -1080,11 +1156,16 @@ public static class GltfMaterialBinder
     private static readonly string[] SpecularNames = [.. CMaterialParams2.SpecularMasks[0], CMaterialParams2.FallbackSpecularMasks];
     private static readonly string[] EmissiveNames = [.. CMaterialParams2.Emissive[0], CMaterialParams2.FallbackEmissive];
 
-    public static MaterialBuilder Bind(UMaterialInterface material, string slotName, ExportOptions options, string meshSaveDirectory)
+    /// <param name="parameters">
+    /// Resolved by the caller, not here, so tests can fabricate parameter sets the fixture
+    /// assets cannot provide (spec §5.1, §9.1). The caller must have resolved them at
+    /// <c>options.MaterialDepth</c> — that is what keeps the referenced textures and the
+    /// written textures the same set (spec §4.4).
+    /// </param>
+    public static MaterialBuilder Bind(
+        UMaterialInterface material, CMaterialParams2 parameters,
+        string slotName, ExportOptions options, string meshSaveDirectory)
     {
-        var parameters = new CMaterialParams2();
-        material.GetParams(parameters, options.MaterialDepth);
-
         var builder = new MaterialBuilder(slotName).WithMetallicRoughnessShader();
 
         BindBaseColor(builder, parameters, options, meshSaveDirectory);
@@ -1456,8 +1537,30 @@ Replace the material construction inside `ExportMeshSections`:
             // --no-materials disables the binder implicitly: with no materials exported
             // there is nothing on disk for a URI to point at.
             var mat = _context.Options.ExportMaterials && slot?.Material?.TryLoad<UMaterialInterface>(out var material) == true
-                ? GltfMaterialBinder.Bind(material, slotName, _context.Options, _context.SaveDirectory)
+                ? GltfMaterialBinder.Bind(material, ResolveParams(material), slotName, _context.Options, _context.SaveDirectory)
                 : new MaterialBuilder(slotName).WithBaseColor(Vector4.One);
+```
+
+And add the resolver the binder now depends on. It is cached because a mesh with eight
+sections sharing one material would otherwise walk the material graph eight times:
+
+```csharp
+    private readonly Dictionary<UMaterialInterface, CMaterialParams2> _paramCache = new();
+
+    /// <summary>
+    /// Resolves material parameters at the session's <c>MaterialDepth</c> — the same depth
+    /// <c>MaterialExporter</c> uses, which is what makes the URIs this writer emits and the
+    /// files that session writes the same set by construction (spec §4.4).
+    /// </summary>
+    private CMaterialParams2 ResolveParams(UMaterialInterface material)
+    {
+        if (_paramCache.TryGetValue(material, out var cached)) return cached;
+
+        var parameters = new CMaterialParams2();
+        material.GetParams(parameters, _context.Options.MaterialDepth);
+        _paramCache[material] = parameters;
+        return parameters;
+    }
 ```
 
 Replace `Save`:
@@ -1957,15 +2060,26 @@ git commit -m "fix: exact normal normalization in glTF/UEFormat and correct morp
 
 ---
 
-## Task 9: Validate exported glTF against the pinned validator, in CI
+## Task 9: Validate exported glTF against the pinned validator **and a headless Blender import**, in CI
 
 **Files:**
 - Test: `CUE4Parse.Cli.Tests/GltfValidationTests.cs`
-- Modify: `.github/workflows/cli-tests.yml` (no change needed if Task 1's env var is set; verify)
+- Create: `CUE4Parse.Cli.Tests/BlenderImportTests.cs`
+- Create: `tools/blender/check_import.py`
+- Modify: `.github/workflows/cli-tests.yml` (no change needed if Task 1's env vars are set; verify)
 
 **Interfaces:**
-- Consumes: `GltfValidator.Validate`, `GltfWriterTests.ExportAsync`.
+- Consumes: `GltfValidator.Validate`, `GltfWriterTests.ExportAsync`, `$BLENDER`.
 - Produces: nothing.
+
+> **Why both.** They prove different things. The validator proves the file is spec-legal.
+> Blender proves it is *usable* — that the importer resolves the relative URIs from its own
+> base path, that the PNG bytes decode, and that the images land on shader nodes. Those are
+> exactly the three ways to get a white mesh out of a file with zero validator errors, which
+> is spec §1 goal condition #1 and was previously verified by nothing at all.
+>
+> On the current fixtures this gate only exercises the base-color path (spec §9.1). It is
+> still worth having: it is the only check in the plan that runs the real consumer.
 
 - [ ] **Step 1: Write the test**
 
@@ -2009,15 +2123,111 @@ dotnet run --project CUE4Parse.Cli.Tests/CUE4Parse.Cli.Tests.csproj -- --filter-
 
 Expected: PASS. Any reported error is a real defect in the writer — fix the writer, never the assertion. The most likely first failures are `UNRESOLVED_REFERENCE` for image URIs (the validator resolves them relative to the `.glb`, which is exactly what Task 6's URI test also checks) and `ACCESSOR_INVALID_FLOAT` / non-unit `NORMAL` (Task 8).
 
-- [ ] **Step 3: Confirm CI picks it up**
+- [ ] **Step 3: Write the Blender import check**
 
-Push the branch; confirm the `cli-tests-linux` job reports these tests as run, not skipped. If they skip, `GLTF_VALIDATOR` was not exported to `$GITHUB_ENV` correctly in Task 1.
+Create `tools/blender/check_import.py`. It runs under Blender's own Python, so it gets no
+test framework — it fails by raising, and Blender's non-zero exit is the signal.
 
-- [ ] **Step 4: Commit**
+```python
+"""Import every .glb under argv[0] and assert its textures actually resolve.
+
+Run as: blender -b -P tools/blender/check_import.py -- <directory>
+Fails loudly: any raise leaves Blender with a non-zero exit code, which is the assertion.
+"""
+import pathlib
+import sys
+
+import bpy
+
+directory = pathlib.Path(sys.argv[sys.argv.index("--") + 1])
+files = sorted(directory.rglob("*.glb"))
+if not files:
+    raise SystemExit(f"no .glb found under {directory}")
+
+for path in files:
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=str(path))
+
+    if not bpy.data.objects:
+        raise SystemExit(f"{path.name}: imported no objects")
+
+    stem = path.stem
+    if not any(mesh.name == stem for mesh in bpy.data.meshes):
+        names = ", ".join(mesh.name for mesh in bpy.data.meshes)
+        raise SystemExit(f"{path.name}: no mesh datablock named {stem!r}; got: {names}")
+
+    for image in bpy.data.images:
+        if image.name == "Render Result":
+            continue
+        # has_data is the real check: a resolvable path that fails to decode still
+        # renders as a white mesh, which is the exact failure this gate exists for.
+        if not image.has_data:
+            raise SystemExit(f"{path.name}: image {image.name!r} ({image.filepath}) has no data")
+
+    print(f"OK  {path.name}: {len(bpy.data.objects)} objects, {len(bpy.data.images)} images")
+```
+
+Create `CUE4Parse.Cli.Tests/BlenderImportTests.cs`, skipping when `$BLENDER` is unset so the
+suite stays runnable on a machine without it:
+
+```csharp
+using System.Diagnostics;
+
+namespace CUE4Parse.Cli.Tests;
+
+public class BlenderImportTests
+{
+    [Theory]
+    [InlineData("CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Fixture.uasset")]
+    [InlineData("CUE4ParseFixtures/Content/Fixtures/Meshes/SK_Fixture.uasset")]
+    public async Task ExportedGlbImportsIntoBlenderWithResolvableTextures(string assetPath)
+    {
+        var blender = Environment.GetEnvironmentVariable("BLENDER");
+        if (string.IsNullOrWhiteSpace(blender))
+        {
+            Assert.Skip("BLENDER not set; install the pinned Blender to run this test.");
+        }
+
+        var output = await GltfWriterTests.ExportAsync(assetPath);
+
+        var psi = new ProcessStartInfo(blender!)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var arg in new[] { "-b", "-P", "tools/blender/check_import.py", "--", output.FullName })
+            psi.ArgumentList.Add(arg);
+
+        using var process = Process.Start(psi)!;
+        var stdout = await process.StandardOutput.ReadToEndAsync();
+        var stderr = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        Assert.True(process.ExitCode == 0, $"Blender import failed:\n{stdout}\n{stderr}");
+    }
+}
+```
+
+- [ ] **Step 4: Run both locally**
 
 ```bash
-git add CUE4Parse.Cli.Tests/GltfValidationTests.cs
-git commit -m "test: validate exported glTF against the pinned glTF-Validator"
+export GLTF_VALIDATOR=/path/to/gltf_validator
+export BLENDER=/path/to/blender
+dotnet run --project CUE4Parse.Cli.Tests/CUE4Parse.Cli.Tests.csproj -- --filter-method "*ExportedGlb*"
+```
+
+Expected: PASS. A failure naming an image with no data means the URI resolved to a file
+Blender could not decode — check `TextureFileNamer` (Task 4) before suspecting the binder.
+
+- [ ] **Step 5: Confirm CI picks it up**
+
+Push the branch; confirm the `cli-tests-linux` job reports these tests as run, not skipped. If they skip, `GLTF_VALIDATOR` or `BLENDER` was not exported to `$GITHUB_ENV` correctly in Task 1.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add CUE4Parse.Cli.Tests/GltfValidationTests.cs CUE4Parse.Cli.Tests/BlenderImportTests.cs tools/blender/check_import.py
+git commit -m "test: validate exported glTF against the pinned validator and a Blender import"
 ```
 
 ---
@@ -2900,7 +3110,21 @@ git commit -m "feat: cue4 info reports native ACL/Oodle state, lists archives, s
 
 ---
 
-# Phase 3 — Replace FModel outright
+# Phase 3 — Stop going back to FModel to *extract*
+
+> **Re-scoped after the design review.** The original heading claimed FModel would be
+> replaced outright. It will not be, and §7.4 of the spec already conceded why: `.wem` and
+> `.binka` come out as raw bytes that still need vgmstream, because CUE4Parse has no codec
+> and FModel bundles one. What this phase actually delivers is that **extraction** no longer
+> requires FModel.
+>
+> Two of the original acceptance criteria were also unreachable and have been rewritten
+> (spec §12): there is no Wwise fixture and no ACL-compressed animation fixture, and neither
+> can be created (spec §9.1). Audio is tested against BinkAudio, which the fixtures do cook;
+> ACL is verified through `info` reporting only.
+>
+> This phase is **not** part of this round's target — see the plan header. Decide on it after
+> Phase 1 output has been used for real work.
 
 ## Task 16: `SoundExporter`
 
@@ -3061,15 +3285,27 @@ git commit -m "feat: export sound assets as raw audio bytes"
 
 ---
 
-## Task 17: Round BC1/BC2/BC3 interpolants, and prove it exhaustively
+## Task 17: Characterize the BC interpolants exhaustively, and report the inconsistency upstream
 
 **Files:**
-- Modify: `CUE4Parse-Conversion/Textures/BC/BCDecoder.cs:46-47`, `:79-80`
 - Test: `CUE4Parse.Tests/BCDecoderTests.cs`
+- Create: `docs/reports/bc-interpolant-rounding.md` (the upstream issue text)
+- Modify: `CUE4Parse-Conversion/Textures/BC/BCDecoder.cs` — **test accessors only** (Step 2's two `internal` wrappers). **No change to any decoding expression.**
 
 **Interfaces:**
 - Consumes: `BCDecoder.DecodeBCColors`.
-- Produces: no API change. `ReadColorsBC1` and `ReadColorsBC3` are `private`, so the test drives them through the `internal`/`public` surface — see Step 3.
+- Produces: no API change. `ReadColorsBC1` and `ReadColorsBC3` are `private`, so the test drives them through the `internal`/`public` surface — see Step 2.
+
+> **This task no longer changes behaviour.** Spec §6.2 was cut from this round. The finding
+> is real — BC4/BC5 round via their `+3`/`+2` terms while BC1/BC2/BC3 truncate, and that
+> asymmetry is an unintended consequence of upstream's `ea938ba8` — but fixing it here is
+> wrong on three counts: it fixes no Blender problem, it changes the bytes of every texture
+> for every CUE4Parse consumer, and the decision belongs to the upstream that made the
+> commit. So the exhaustive test stays and **pins the current behaviour**; the fix goes
+> upstream as an issue.
+>
+> A characterization test is not a weaker test. It is the thing that turns "upstream changed
+> the decoder" from something you discover in a render months later into a red build.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3085,8 +3321,15 @@ namespace CUE4Parse.Tests;
 /// endpoints are 5/6/5 bits, so 1024 red pairs, 4096 green pairs and 1024 blue pairs
 /// cover every value the decoder can ever see. BC4/BC5 endpoints are 8 bits: 65536 pairs.
 /// <para>
-/// The threshold is **zero**. "Within 1" is a threshold both the truncating and the
-/// rounding formula pass, which makes it a test that cannot tell right from wrong.
+/// The threshold is **zero** — but zero against <em>what the decoder does today</em>, not
+/// against exact arithmetic. These tests characterize: BC1/BC2/BC3 truncate, BC4/BC5 round.
+/// That asymmetry is a known defect reported upstream (docs/reports/bc-interpolant-rounding.md),
+/// deliberately not fixed here. When upstream changes the formula these go red, which is
+/// the entire point of pinning it.
+/// </para>
+/// <para>
+/// "Within 1" would be useless either way: it is a threshold both the truncating and the
+/// rounding formula pass, i.e. a test that cannot tell one from the other.
 /// </para>
 /// </summary>
 public class BCDecoderTests
@@ -3094,12 +3337,17 @@ public class BCDecoderTests
     private static byte Expand5(int value) => (byte)((value << 3) | (value >> 2));
     private static byte Expand6(int value) => (byte)((value << 2) | (value >> 4));
 
-    // The historical DXTDecoder formula, and the one the five decoders must now agree on.
-    private static byte Interpolate2To1(int a, int b) => (byte)((2 * a + b + 1) / 3);
-    private static byte Interpolate1To2(int a, int b) => (byte)((a + 2 * b + 1) / 3);
+    // What BC1/BC2/BC3 do today: truncate. Not what they ought to do — see the class
+    // summary. BC4/BC5 use the rounding form below instead.
+    private static byte Interpolate2To1(int a, int b) => (byte)((2 * a + b) / 3);
+    private static byte Interpolate1To2(int a, int b) => (byte)((a + 2 * b) / 3);
+
+    // The rounding form: the historical DXTDecoder DXT3/DXT5 formula, still used by BC4/BC5.
+    private static byte Interpolate2To1Rounded(int a, int b) => (byte)((2 * a + b + 1) / 3);
+    private static byte Interpolate1To2Rounded(int a, int b) => (byte)((a + 2 * b + 1) / 3);
 
     [Fact]
-    public void Bc1RedAndBlueInterpolantsRoundRatherThanTruncate()
+    public void Bc1RedAndBlueInterpolantsTruncate()
     {
         for (var e0 = 0; e0 < 32; e0++)
         for (var e1 = 0; e1 < 32; e1++)
@@ -3115,7 +3363,7 @@ public class BCDecoderTests
     }
 
     [Fact]
-    public void Bc1GreenInterpolantsRoundRatherThanTruncate()
+    public void Bc1GreenInterpolantsTruncate()
     {
         for (var e0 = 0; e0 < 64; e0++)
         for (var e1 = 0; e1 < 64; e1++)
@@ -3138,6 +3386,28 @@ public class BCDecoderTests
         {
             Assert.Equal(BCDecoderProbe.Bc1RedInterpolants(e0, e1), BCDecoderProbe.Bc3RedInterpolants(e0, e1));
         }
+    }
+
+    /// <summary>
+    /// Pins the defect itself, so the upstream report has a reproducible witness and so the
+    /// day someone "fixes" BC1 without touching BC4 this test says which half moved.
+    /// </summary>
+    [Fact]
+    public void Bc1TruncatesWhereBc4Rounds()
+    {
+        var divergences = 0;
+        for (var e0 = 0; e0 < 32; e0++)
+        for (var e1 = 0; e1 < 32; e1++)
+        {
+            var c0 = Expand5(e0);
+            var c1 = Expand5(e1);
+            if (Interpolate2To1(c0, c1) != Interpolate2To1Rounded(c0, c1)) divergences++;
+        }
+
+        // Non-zero by construction: any exact value with fraction 1/3 or 2/3 differs.
+        Assert.True(divergences > 0,
+            "BC1 now agrees with the rounding form — upstream changed the decoder. " +
+            "Re-read docs/reports/bc-interpolant-rounding.md before updating this test.");
     }
 
     [Fact]
@@ -3227,47 +3497,38 @@ Change `BCDecoderProbe`'s two `BCDecoder.ReadColors*Internal` references to work
 
 **Note on `Pack`:** the packed word's low 16 bits are `c0` and the high 16 bits are `c1`, with the 5/6/5 layout `rrrrrggggggbbbbb`. `e0 << 11` puts a 5-bit value in the red field; `e0 << 5` puts a 6-bit value in the green field. Verify this against `ReadColorsBC1`'s masks (`0xF81F` for red+blue, `0x07E007E0` for green) before running — if the ordering is reversed, fix `Pack`, not the assertions.
 
-- [ ] **Step 3: Run the tests to verify they fail**
-
-Run: `dotnet run --project CUE4Parse.Tests/CUE4Parse.Tests.csproj -- --filter-method "*Bc1RedAndBlue*"`
-Expected: FAIL — the current formula truncates, so every interpolant whose exact value has a fractional part of 1/3 or 2/3 is one lower than the rounded expectation.
-`Bc4And5AlphaInterpolantsAreExactlyRounded` should PASS immediately: BC4/BC5 already round via the `+3`/`+2` terms.
-
-- [ ] **Step 4: Switch BC1 and BC3 to rounding**
-
-Truncation is not a repo convention — it is an unintended result of commit `ea938ba8` ("Optimize BC1–BC5 decoders for 3–5× speedup"), which replaced `DXTDecoder`'s `(2*c0 + c1 + 1) / 3` for DXT3/DXT5 with the shared truncating expression. Restore rounding for all three, keeping the multiply-shift trick so the speedup survives.
-
-In `ReadColorsBC1`, replace the `c0 > c1` branch:
-
-```csharp
-        if (c0 > c1)
-        {
-            // ((x + 1) * 683) >> 11 = round(x/3) for x in [0,765]; the green channel is
-            // pre-shifted 8 bits, so its rounding term is 256 and its shift is 19.
-            Unsafe.Add(ref dst, 2) = ((2 * r0 + r1 + 1) * 683) >> 11 | ((((2 * g0 + g1 + 256) * 683) >> 19) << 8) | ((((2 * b0 + b1 + 1) * 683) >> 11) << 16) | 0xFF000000;
-            Unsafe.Add(ref dst, 3) = ((r0 + 2 * r1 + 1) * 683) >> 11 | ((((g0 + 2 * g1 + 256) * 683) >> 19) << 8) | ((((b0 + 2 * b1 + 1) * 683) >> 11) << 16) | 0xFF000000;
-        }
-```
-
-In `ReadColorsBC3`, replace the last two assignments:
-
-```csharp
-        Unsafe.Add(ref dst, 2) = ((2 * r0 + r1 + 1) * 683) >> 11 | ((((2 * g0 + g1 + 256) * 683) >> 19) << 8) | ((((2 * b0 + b1 + 1) * 683) >> 11) << 16);
-        Unsafe.Add(ref dst, 3) = ((r0 + 2 * r1 + 1) * 683) >> 11 | ((((g0 + 2 * g1 + 256) * 683) >> 19) << 8) | ((((b0 + 2 * b1 + 1) * 683) >> 11) << 16);
-```
-
-The identity `(x * 683) >> 11 == floor(x/3)` is proven for `[0, 765]`; the added `+1` pushes the maximum to 766, and `766 * 683 >> 11 = 255 = floor(766/3)`, so the range still holds. The exhaustive test is what confirms it across the whole domain rather than at the endpoints.
-
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 3: Run the tests to verify they pass**
 
 Run: `dotnet test CUE4Parse.Tests/CUE4Parse.Tests.csproj -c Release`
-Expected: all four BC tests PASS with zero deviation, and no existing texture test regresses. Texture bytes changing is expected and is explicitly not a committed guarantee (`docs/cue4-output-contract.md`, non-commitments) — the same churn already happened silently for DXT3/DXT5 in `ea938ba8`.
+Expected: all five BC tests PASS immediately. These characterize what the decoder already does, so a failure here means the decoder is not what this task believes it is — investigate before touching anything, and do **not** adjust the expectation to make it green.
+
+- [ ] **Step 4: Write the upstream report**
+
+Create `docs/reports/bc-interpolant-rounding.md`. This is issue text for `FabianFG/CUE4Parse`, not a design note — keep it short enough that a maintainer reads all of it:
+
+1. **Observation.** BC4/BC5 round their interpolants (the `+3` and `+2` terms in `DecodeBCColors`); BC1/BC2/BC3 truncate (`(x * 683) >> 11`). Mean error is 0 for the former and −1/3 LSB for the latter.
+2. **Provenance.** Commit `ea938ba8` ("Optimize BC1–BC5 decoders for 3–5× speedup", 04/08/2026) replaced `DXTDecoder` with `BCDecoder`. The old code used `(2*c0 + c1) / 3` for DXT1 but `(2*c0 + c1 + 1) / 3` for DXT3/DXT5. The new shared expression truncates for all three, so **BC3 silently changed from rounding to truncating** in a commit whose stated purpose was speed. Every DXT3/DXT5 texture decoded since then differs from the pre-commit output.
+3. **The trap, if you fix it.** The obvious patch — add `+1` before dividing by three — is a **no-op on green**. Green is kept pre-shifted 8 bits (`g0 = g & 0xFF00`), which is why it divides with `>>19` rather than `>>11`, so `2*g0 + g1` is always a multiple of 256. Adding 1 contributes 683 to a quantity `>>19` quantizes at 524288; it will essentially never change the result. Green needs **`+256`**. A `+1`-everywhere patch rounds R and B, leaves G truncating, and introduces a *new* channel inconsistency worse than today's uniform truncation. The correct form:
+
+   ```csharp
+   Unsafe.Add(ref dst, 2) = ((2 * r0 + r1 + 1) * 683) >> 11
+                          | ((((2 * g0 + g1 + 256) * 683) >> 19) << 8)
+                          | ((((2 * b0 + b1 + 1) * 683) >> 11) << 16)
+                          | 0xFF000000;
+   ```
+
+   The identity `(x * 683) >> 11 == floor(x/3)` holds on `[0, 765]`; `+1` pushes the max to 766 and `766 * 683 >> 11 = 255 = floor(766/3)`, so the range survives.
+4. **Why we are not sending a PR.** Changing it alters the bytes of every BC1/BC2/BC3 texture for every consumer. That is upstream's call, not ours. `CUE4Parse.Tests/BCDecoderTests.cs` pins the current behaviour so the change is visible whenever it happens.
+
+- [ ] **Step 5: File it**
+
+Open the issue against `FabianFG/CUE4Parse` with the contents of that file. Record the issue URL in the report's header so the test's failure message can point at a real discussion.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add CUE4Parse-Conversion/Textures/BC/BCDecoder.cs CUE4Parse.Tests/BCDecoderTests.cs
-git commit -m "fix: round BC1/BC2/BC3 colour interpolants, matching BC4/BC5 and the pre-optimization output"
+git add CUE4Parse.Tests/BCDecoderTests.cs docs/reports/bc-interpolant-rounding.md
+git commit -m "test: characterize BC1-BC5 interpolant rounding and report the asymmetry upstream"
 ```
 
 ---
@@ -3281,6 +3542,14 @@ git commit -m "fix: round BC1/BC2/BC3 colour interpolants, matching BC4/BC5 and 
 **Interfaces:**
 - Consumes: `InfoCommand`'s `native` block from Task 15.
 - Produces: nothing new.
+
+> **Reporting only — there is no ACL animation to export.** ACL compression requires a UE
+> plugin, and the fixture set contains no ACL-compressed animation (spec §9.1). Acceptance
+> criterion 12 was reduced accordingly: it asserts that `info` tells the truth about the
+> native library, not that an ACL animation round-trips. That is a real limit, not a
+> formality — this task can prove the plumbing is honest and cannot prove decompression
+> works. Record it in the contract's verification-gaps section rather than leaving a reader
+> to assume otherwise.
 
 - [ ] **Step 1: Build the natives with the ACL submodule present**
 

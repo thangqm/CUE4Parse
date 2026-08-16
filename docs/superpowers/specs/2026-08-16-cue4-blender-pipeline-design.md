@@ -1,9 +1,29 @@
 # Spec — `cue4` CLI thay thế FModel, output dùng được ngay trong Blender
 
 **Ngày:** 2026-08-16
-**Bản:** 2 — sửa sau buổi rà soát đối chiếu với mã nguồn
+**Bản:** 3 — sửa sau buổi phỏng vấn thiết kế
 **Nhánh:** `worktree-feat-cue4-cli`
 **Tiền đề:** [Báo cáo đối chiếu cue4 ↔ FModel 4.4.4](../../reports/2026-08-16-cue4-cli-vs-fmodel-parity.md)
+
+> **Bản 3 sửa gì so với bản 2.** Buổi phỏng vấn thiết kế lật hai nhóm kết luận.
+>
+> *Nhóm một — nền kiểm chứng không tồn tại.* Máy này **không có UE 5.8 và không có dự
+> án `CUE4ParseFixtures`** (rà cả ổ đĩa: chỉ có template UE 4.26, còn 88,7 GB trống).
+> Bộ fixture UE5_8 vì thế là **chỉ đọc**. Tra tiếp thì lộ ra nó không đỡ nổi những gì
+> bản 2 hứa: material `M_Fixture` có đúng **một** tham số texture, `FixtureTexture` →
+> `T_BC3`, mà cái tên ấy không khớp bảng phân loại nào của `CMaterialParams2` lẫn
+> regex dự phòng nào — nó chỉ được phân loại nhờ lối tắt `ReferencedTextures.Count == 1`
+> ở `UMaterial.GetParams`. Không có normal map, không có nguồn SpecularMasks, không có
+> emissive, không có material masked, không có animation nén ACL. Hệ quả: tiêu chí
+> nghiệm thu 4 và 5 **không chứng minh được end-to-end**, và hàng "Fixture mới" của §9
+> là bất khả thi. Xem §9.1.
+>
+> *Nhóm hai — phạm vi.* §6.2 (làm tròn BC) bị **cắt khỏi đợt này**: nó không sửa vấn đề
+> Blender nào, đổi byte của mọi texture với mọi consumer, và bắt nguồn từ một commit của
+> upstream nên quyết định thuộc về upstream. §8.2 giữ lại nhưng **lý lẽ của nó sai** và
+> đã viết lại. §1.1 bỏ lệnh cấm chạy Blender trong CI — điều kiện thành công số 1 của §1
+> trước đó không có gì kiểm chứng cả. Và §4 nay có phần **chiến lược upstream**: bản 2
+> sửa ~14 file nóng của upstream mà không hề fork.
 
 > **Bản 2 sửa gì so với bản 1.** Bốn kết luận của bản 1 bị lật sau khi đối chiếu với
 > mã nguồn: ánh xạ kênh ORM (§5.2), quy tắc đuôi file texture (§5.4), phần "đính
@@ -26,8 +46,14 @@ Ba điều kiện để coi là đạt:
 ### 1.1 Ngoài phạm vi
 
 - **World/Map export.** `WorldExporter` có sẵn nhưng không được kiểm chứng, không được tài liệu hoá trong đợt này.
-- **Script phía Blender.** Repo không chứa `.py` nào cho Blender; cam kết của dự án dừng ở hợp đồng đầu ra.
-- **Blender trong CI.** Kiểm chứng bằng glTF-Validator và assert cấu trúc, không chạy Blender thật.
+- **Addon Blender và chế độ daemon.** Không có `cue4 serve`, không có giao thức, không có
+  addon tương tác. Quy trình là **một lần chạy, một lần mount, một lần thoát**:
+  `cue4 export` ghi file, rồi `blender --background --python` đọc chúng. Mount một lần
+  cho mỗi lần chạy batch nên daemon không mua được gì; nó chỉ đáng giá khi có người
+  ngồi bấm, mà đợt này không có ai bấm cả.
+- **Script bpy như một sản phẩm.** Cam kết của dự án là **hợp đồng đầu ra**, không phải
+  một addon được bảo trì. Repo có đúng một `docs/examples/import_glb.py` — nó tồn tại để
+  *kiểm chứng hợp đồng* (§9), không phải để ai đó dựng quy trình lên trên.
 - **Giải mã audio Wwise/Bink.** Xem §7.4 — `cue4` xuất byte thô đúng định dạng; việc chuyển `.wem`/`.binka` thành file phát được thuộc về vgmstream ở bước sau, không nằm trong đợt này.
 - **Tương thích byte với FModel.** Chủ động từ bỏ — xem §2.
 - `--with-raw`, `--material-map`, `--no-audio-decompress`: đã cân nhắc và loại, xem §7.7.
@@ -124,7 +150,8 @@ Lý do loại hai hướng kia:
 - *Hậu xử lý trong CLI*: phải đọc-ghi lại file 20–40MB mỗi mesh, và phải dựng lại ánh xạ slot→material mà `Gltf.cs` vốn đã có.
 - *Feature flag*: material rỗng không phải hành vi ai cố ý muốn, nó là khiếm khuyết. Thêm cờ chỉ để bảo tồn khiếm khuyết là nợ kỹ thuật, và default lệch nhau giữa CLI với thư viện dễ gây nhầm.
 
-Đổi trực tiếp trong tầng conversion còn cho phép đẩy ngược phần glTF lên upstream.
+Đổi trực tiếp trong tầng conversion còn cho phép đẩy ngược phần glTF lên upstream — nhưng
+"cho phép" không phải là một kế hoạch. Xem §4.6.
 
 ### 4.2 File mới
 
@@ -143,7 +170,7 @@ Lý do loại hai hướng kia:
 
 ### 4.3 File sửa
 
-`Writers/Gltf/Gltf.cs` · `Writers/UEFormat/UEModel.cs` (§6.1) · `Formats/Meshes/IMeshExportFormat.cs` và bốn implementor (§4.5) · `Exporters/ExportSession.cs` (§6.3 và §5.6) · `Exporters/ExporterBase.cs` (ctor `protected` nhận hậu tố tên, §5.6) · `Exporters/TextureExporter.cs` · `Exporters/MaterialExporter.cs` · `ExportResult.cs` (thêm `ClassName`, §7.5) · `Textures/BC/BCDecoder.cs` (§6.2) · `Options/ExportOptions.cs` · `CUE4Parse.Cli/Services/ExportOptionsMapper.cs` · `CUE4Parse.Cli/Program.cs` · `CUE4Parse.Cli/Commands/{ExportCommand,InfoCommand}.cs` · `.gitmodules`/native build cho ACL · `CLAUDE.md`.
+`Writers/Gltf/Gltf.cs` · `Writers/UEFormat/UEModel.cs` (§6.1) · `Formats/Meshes/IMeshExportFormat.cs` và bốn implementor (§4.5) · `Exporters/ExportSession.cs` (§6.3 và §5.6) · `Exporters/ExporterBase.cs` (ctor `protected` nhận hậu tố tên, §5.6) · `Exporters/TextureExporter.cs` · `Exporters/MaterialExporter.cs` · `ExportResult.cs` (thêm `ClassName`, §7.5) · `Options/ExportOptions.cs` · `CUE4Parse.Cli/Services/ExportOptionsMapper.cs` · `CUE4Parse.Cli/Program.cs` · `CUE4Parse.Cli/Commands/{ExportCommand,InfoCommand}.cs` · `.gitmodules`/native build cho ACL · `CLAUDE.md`.
 
 ### 4.4 Hai ranh giới
 
@@ -167,6 +194,48 @@ public readonly record struct MeshExportContext(
 
 Lý lẽ chống lại việc để binder tự `TryLoad<UMaterialInterface>()` trong writer không đứng vững: `Gltf.cs:58` đã gọi `morphTargets[j].Load<UMorphTarget>()` — tiền lệ có sẵn.
 
+### 4.6 Chiến lược upstream
+
+`origin` trỏ thẳng `FabianFG/CUE4Parse`, **không phải fork**. Spec của CLI hứa bề mặt xung
+đột khi `git pull --rebase` chỉ gồm `CUE4Parse.slnx` và `Directory.Packages.props`. §4.3
+xoá sạch lời hứa đó: nó sửa ~14 file trong tầng conversion, và sửa theo kiểu **phá chữ
+ký**, không phải cộng thêm. Đo trên 12 tháng gần nhất, đúng những file ấy nhận ~66 commit
+của upstream:
+
+| Commit / 12 tháng | File |
+|---|---|
+| 19 | `ExportSession.cs` |
+| 11 | `Exporters/ExporterBase.cs` |
+| 9 | `Writers/UEFormat/UEModel.cs` |
+| 8 | `Writers/Gltf/Gltf.cs` |
+| 5 | `TextureExporter.cs`, `Options/ExportOptions.cs` |
+| 3 | `IMeshExportFormat.cs`, `MaterialExporter.cs`, `ExportResult.cs` |
+
+Xung đột trong mã mesh/material là loại xung đột **im lặng**: merge sai không làm vỡ build,
+nó làm sai một kênh texture.
+
+→ **Fork sang remote riêng, rồi chia §4.3 làm hai rổ.**
+
+**Rổ A — khiếm khuyết, gửi PR lên upstream.** Là lỗi theo bất kỳ cách đọc nào, không mang
+quan điểm riêng của quy trình này:
+
+- §6.3 dấu phân cách đường dẫn — export hỏng câm trên Linux, mất dữ liệu.
+- §6.1 morph delta bị chuẩn hoá và đặt nhầm khe — sai spec glTF, đang có hiệu lực ở mọi
+  lần export skeletal mesh.
+- §6.1 `NORMAL` không phải vector đơn vị.
+- §5 material glTF rỗng trơn — `pbrMetallicRoughness":{}`, không `images`, không `textures`.
+- §8.2 đổi tên datablock từ `LOD0` sang tên file — xem lại lý lẽ ở §8.2.
+
+**Rổ B — quan điểm, giữ ở local.** Đúng cho quy trình này, chưa chắc upstream muốn:
+manifest và `ExportResult.ClassName`, các cờ CLI mới, `OrmTextureExporter` (quy ước ORM
+là chuyện của glTF, không phải của thư viện), `MeshExportContext` nếu upstream không nhận.
+
+Nếu rổ A vào được upstream thì bề mặt phân kỳ co lại gần đúng lời hứa hai file của spec
+CLI. Đó là lý do chia rổ, chứ không phải vì lịch sự.
+
+**Thứ tự thao tác:** fork trước, rebase nhánh `worktree-feat-cue4-cli` lên fork, rồi mới
+bắt đầu Pha 0. Ràng buộc "chỉ được sửa hai file của upstream" trong plan bị lời này thay thế.
+
 ---
 
 ## 5. `GltfMaterialBinder`
@@ -174,11 +243,30 @@ Lý lẽ chống lại việc để binder tự `TryLoad<UMaterialInterface>()` 
 ### 5.1 Chữ ký
 
 ```csharp
-MaterialBuilder Bind(UMaterialInterface material, string slotName,
-                     ExportOptions options, string meshSaveDirectory)
+MaterialBuilder Bind(UMaterialInterface material, CMaterialParams2 parameters,
+                     string slotName, ExportOptions options, string meshSaveDirectory)
 ```
 
-`meshSaveDirectory` là `ExporterBase.SaveDirectory` của mesh, chuyền xuống qua `MeshExportContext`; mọi URI tính tương đối từ đó. Không tham chiếu `ExportSession` nên test được bằng một `UMaterialInterface` dựng sẵn.
+`meshSaveDirectory` là `ExporterBase.SaveDirectory` của mesh, chuyền xuống qua `MeshExportContext`; mọi URI tính tương đối từ đó. Không tham chiếu `ExportSession`.
+
+**`parameters` do người gọi truyền vào, binder không tự `GetParams`.** Bản 2 để binder tự
+gọi `material.GetParams(parameters, options.MaterialDepth)`, và như thế thì **không test
+được**: muốn dựng một material có normal map, có SpecularMasks, có `BLEND_Masked` thì phải
+có một asset UE thật mang đủ những thứ đó — mà §9.1 cho thấy fixture không có, và máy này
+không dựng thêm fixture được. Truyền `CMaterialParams2` vào thì test tự bịa được mọi tổ
+hợp kênh và mọi `EBlendMode` mà không cần asset nào.
+
+Vẫn cần `material` bên cạnh `parameters` vì `CMaterialParams2` mang `BlendMode` nhưng
+**không** mang `TwoSided` lẫn `OpacityMaskClipValue` — §5.3 cần cả hai, và chúng nằm trên
+`UMaterial` / `UMaterialInstance.BasePropertyOverrides`.
+
+Bảo đảm của §4.4 không suy suyển: nó dựa trên việc binder và `MaterialExporter` dùng **cùng
+một tập texture ở cùng một `MaterialDepth`**. Người gọi truyền vào cùng cái
+`parameters` ấy thì bảo đảm còn chặt hơn — trước là hai lời gọi trùng nhau theo quy ước,
+nay là **một** đối tượng dùng chung. Đổi lại, người gọi (`Gltf.cs`) phải gọi `GetParams`
+một lần cho mỗi section, trong khi `MaterialExporter` vẫn gọi lần nữa cho JSON và cho việc
+enqueue texture — trùng công, không sai kết quả. Nếu hồ sơ đo cho thấy đắt thì cache theo
+`UMaterialInterface`; đừng tối ưu trước khi đo.
 
 ### 5.2 Ánh xạ kênh
 
@@ -345,29 +433,35 @@ một chỗ khác: **`UEModel.cs:139-143`, TANGENTS của UEFormat**, dùng `tan
 Sửa cùng lô (một dòng), nhưng nó **không** nằm trong cam kết §8.3 nên không kéo theo
 nghĩa vụ kiểm chứng mới.
 
-### 6.2 BC decoder — chuyển sang làm tròn
+### 6.2 BC decoder — **cắt khỏi đợt này, chuyển thành báo cáo upstream**
 
-BC4 và BC5 **đang làm tròn** (số hạng `+3`/`+2` trong `DecodeBCColors`), còn BC1/BC2/BC3
-cắt xuống. "Cắt xuống" không phải quy ước của repo — nó là kết quả không chủ ý của
-`ea938ba8`, một commit tối ưu tốc độ (§2).
+Phát hiện giữ nguyên: BC4 và BC5 **đang làm tròn** (số hạng `+3`/`+2` trong
+`DecodeBCColors`), còn BC1/BC2/BC3 cắt xuống. "Cắt xuống" không phải quy ước của repo — nó
+là kết quả không chủ ý của `ea938ba8`, một commit tối ưu tốc độ (§2).
 
-→ **Đổi BC1, BC2, BC3 sang làm tròn** (thêm số hạng `+1` trước phép chia ba, giữ thủ
-thuật nhân-dịch để không mất tốc độ). Kết quả: cả năm decoder nhất quán, sai số trung
-bình về 0 thay vì −1/3 LSB, và BC3 quay lại đúng đầu ra lịch sử của nó.
+**Nhưng việc sửa không thuộc đợt này.** Ba lý do, theo thứ tự sức nặng:
 
-Cần kiểm tra riêng: hằng số `683`/`>>11` (và `>>19` cho kênh green đã dịch sẵn 8 bit)
-có còn cho ra `floor(x/3)` đúng trên toàn dải sau khi cộng thêm 1 hay không. Test vét
-cạn (§9) chính là chỗ trả lời.
+1. Nó không sửa vấn đề Blender nào. Sai số −1/3 LSB không nhìn thấy được trong một bản
+   render; mục tiêu §1 là texture *có mặt*, không phải texture lệch một nấc.
+2. Nó đổi byte của **mọi** texture, cho **mọi** consumer của CUE4Parse, không riêng gì
+   quy trình này.
+3. Nó bắt nguồn từ commit của upstream, trong file của upstream. Quyết định "cắt hay
+   tròn" thuộc về upstream, không thuộc về một nhánh làm pipeline Blender.
 
-> **Bản 1 sai ở đâu.** Bản 1 kết luận "giữ nguyên công thức" với lý do *"đổi BC1 sang
-> làm tròn sẽ làm mọi texture DXT1 đã xuất trước đây đổi byte — churn thật, lợi ích
-> không nhìn thấy."* Lập luận không còn đứng: churn **đã xảy ra rồi**, âm thầm, cho mọi
-> texture DXT3/DXT5, trong `ea938ba8`. Và chính §8.4 đã không cam kết byte texture ổn
-> định giữa các phiên bản, nên churn không phải chi phí.
->
-> Test vét cạn cũng phải đổi ngưỡng: assert lệch **= 0** so với số học chính xác, chứ
-> không phải "≤ 1" — ngưỡng mà cả hai công thức đều lọt qua, tức là một test không phân
-> biệt được đúng với sai.
+→ **Giữ lại test vét cạn** (§9) nhưng đổi vai: nó **đặc tả hành vi hiện tại** thay vì ép
+hành vi mới. Test ghi lại rằng BC1/BC2/BC3 cắt và BC4/BC5 tròn. Khi upstream đổi, test
+đỏ ngay, và đó chính là lúc cần biết.
+
+→ **Gửi upstream một issue** kèm bằng chứng: `ea938ba8` đổi `DXTDecoder` (BC1 cắt, BC3
+tròn) thành `BCDecoder` (cả hai cắt), tức đã âm thầm đổi BC3; và bẫy dưới đây.
+
+> **Cái bẫy phải ghi vào issue.** Bản sửa hiển nhiên — "cộng 1 trước khi chia ba" — **sai
+> ở kênh green**. Green được giữ **dịch sẵn 8 bit** (`g0 = g & 0xFF00`), nên nó chia bằng
+> `>>19` chứ không phải `>>11`, và `2*g0 + g1` luôn là bội của 256. Cộng 1 chỉ góp 683 vào
+> một đại lượng mà `>>19` lượng tử hoá ở bước 524288 — gần như không bao giờ đổi kết quả.
+> Muốn tròn đúng ở green phải cộng **256**. Một bản vá cộng-1-khắp-nơi sẽ tròn R và B,
+> để G tiếp tục cắt, và đẻ ra một sự **không nhất quán mới giữa các kênh** — tệ hơn tình
+> trạng cắt-đều hiện nay.
 
 ### 6.3 Dấu phân cách đường dẫn
 
@@ -439,7 +533,11 @@ hộ ở bước sau. Nhánh `OGG` thì phát được ngay, vì Ogg Vorbis đã
 
 > **Bản 1 sai ở đâu.** Bản 1 ghi *"Audio chỉ thiếu dây nối, không thiếu hạ tầng"* và
 > đặt tiêu chí nghiệm thu *"một asset audio Wwise xuất ra file phát được"*. Tiêu chí đó
-> không đạt được bằng dây nối; đã hạ phạm vi và viết lại §12.7.
+> không đạt được bằng dây nối; đã hạ phạm vi và viết lại thành tiêu chí 13 của §12.
+>
+> **Bản 3 hạ tiếp.** Ngay cả "một asset audio *Wwise*" cũng không kiểm được: Wwise là
+> middleware chứ không phải một `ESoundAssetCompressionType`, nên bộ fixture không có và
+> không thể có `.wem` (§9.1). Tiêu chí 13 chuyển sang **BinkAudio**, thứ fixture có thật.
 
 ### 7.5 Manifest
 
@@ -551,9 +649,22 @@ Hiện tại `meshes[0].name` là `"LOD0"`, không mang tên asset. Khi script b
 | `MESH_X_LOD1.glb` | `MESH_X_LOD1` |
 | `MESH_X_Nanite.glb` | `MESH_X_Nanite` |
 
-Luật này **không có ngoại lệ nào**: script đọc tên file là biết tên datablock, đúng cho
-mọi tổ hợp `--mesh-quality` × `--nanite`, và duy nhất trên toàn scene vì `ObjectName`
-đã duy nhất theo asset.
+Luật này **không có ngoại lệ nào** ở đúng một điều nó hứa: **tên datablock = tên file bỏ
+đuôi**, cho mọi tổ hợp `--mesh-quality` × `--nanite`. Script đọc tên file là biết tên
+datablock.
+
+> **Nó *không* hứa duy nhất trên toàn scene, và bản 2 đã hứa nhầm.** Bản 2 viết "duy nhất
+> trên toàn scene vì `ObjectName` đã duy nhất theo asset". Sai: `ExporterBase` đặt
+> `ObjectName = export.Name`, tức **tên lá**, không kèm package path. `/Game/Props/A/SM_Rock`
+> và `/Game/Props/B/SM_Rock` cho hai file cùng tên `SM_Rock.glb` ở hai thư mục khác nhau,
+> và theo luật này **cả hai datablock đều tên `SM_Rock`** — Blender vẫn nối `.001` y như cũ.
+>
+> Luật vẫn đáng giữ, vì nó cho script một ánh xạ file → datablock mà trước đây không có
+> (`LOD0` thì chẳng ánh xạ tới đâu cả). Nhưng script bpy **vẫn phải tự xử lý va chạm
+> `.001`**, và hợp đồng §8.3 phải nói đúng cái nó bảo đảm.
+>
+> Muốn duy nhất thật thì phải mã hoá package path vào tên — tên dài và xấu, lại khó thuyết
+> phục upstream. Không làm trong đợt này.
 
 Thông tin bị mất — "file `MESH_X.glb` này thực ra là LOD nguồn số 3" — thuộc về manifest
 (§7.5), không thuộc về tên. Tên dùng để định danh; metadata thuộc về manifest.
@@ -569,11 +680,13 @@ Thông tin bị mất — "file `MESH_X.glb` này thực ra là LOD nguồn số
 ### 8.3 Cam kết
 
 - glTF không lỗi theo glTF-Validator chính thức, ở phiên bản đã ghim (§9).
+- **File `.glb` import được vào Blender ở phiên bản đã ghim, và mọi ảnh nó tham chiếu đều
+  nạp được** (§9.2) — đây là điều kiện thành công số 1 của §1, nay có cổng kiểm chứng thật.
 - `|NORMAL| = 1` với mọi vertex.
 - Material có texture khi phân loại được, và URI luôn trỏ tới file mà chính lần chạy đó ghi ra.
 - `alphaMode` / `alphaCutoff` / `doubleSided` phản ánh đúng material UE.
 - `COLOR_0` là vertex color thật, đã chuẩn hoá về 0..255.
-- Tên datablock mesh = tên file không đuôi (§8.2).
+- Tên datablock mesh = tên file không đuôi (§8.2). **Không** cam kết duy nhất trên toàn scene.
 - Manifest có `version`; đổi schema thì tăng số.
 - Exit code theo bảng hiện có (0, 1, 2, 3, 4, 5, 6, 7, 8).
 
@@ -587,6 +700,10 @@ Ghi rõ để không ai xây script lên trên:
 - Manifest **không** cho biết LOD nguồn của từng file (§7.5).
 - File `.wem` / `.binka` là byte thô, **không** phát được trực tiếp (§7.4).
 - Delta của morph target **không** phải vector đơn vị — đó là đúng spec glTF (§6.1).
+- Tên datablock **không** duy nhất trên toàn scene: hai asset trùng tên ở hai thư mục khác
+  nhau vẫn va chạm và Blender vẫn nối `.001` (§8.2).
+- Byte của BC1/BC2/BC3 giữ nguyên hành vi cắt xuống hiện tại; sai lệch −1/3 LSB so với số
+  học chính xác là **đã biết và không sửa trong đợt này** (§6.2).
 
 ---
 
@@ -606,17 +723,71 @@ Ghi rõ để không ai xây script lên trên:
    phơi ra API JavaScript chứ không phải lệnh CLI, nên "một bước npm" thực tế là npm
    cộng một driver JS tự viết — đúng thứ cần tránh. Ghim phiên bản là bắt buộc: lời hứa
    "không lỗi theo validator" chỉ có nghĩa khi validator không tự đổi dưới chân mình.
+4. Ghim một bản Blender (tarball Linux) theo đúng cách ấy — xem §9.2.
+
+### 9.1 Nền kiểm chứng: fixture UE5_8 là **chỉ đọc**, và nó thiếu gì
+
+Máy này không có UE 5.8 và không có dự án `CUE4ParseFixtures` (rà cả ổ: chỉ có template
+UE 4.26; 88,7 GB trống). **Không dựng thêm fixture được**, và bản 2 có hẳn một hàng "Fixture
+mới" giả định điều ngược lại. Hàng đó bị **xoá**.
+
+Bộ fixture hiện có đỡ được gì, không đỡ được gì:
+
+| Cần cho | Fixture có? |
+|---|---|
+| Mesh tĩnh, mesh skeletal, Nanite | **Có** |
+| Material có texture phân loại được | **Gần như không.** `M_Fixture` có đúng một tham số texture, `FixtureTexture` → `T_BC3`. Tên ấy không nằm trong bảng `Diffuse`/`Normals`/`SpecularMasks`/`Emissive` nào, và `T_BC3` cũng không khớp `RegexDiffuse`/`RegexNormals`/`RegexSpecularMasks`. Nó **chỉ** được phân loại nhờ lối tắt `ReferencedTextures.Count == 1` → `PM_Diffuse` ở `UMaterial.GetParams:307-311`. Tức là: cùng lắm ra được base color, và ra được một cách tình cờ |
+| Normal map | **Không** |
+| Nguồn SpecularMasks (để repack ORM) | **Không** |
+| Emissive | **Không** |
+| Material `BLEND_Masked` | **Không** |
+| Animation nén ACL | **Không** (ACL là plugin của UE) |
+| Audio | **Có, tốt**: cả bảy `ESoundAssetCompressionType` đều được cook, gồm BinkAudio, Opus, ADPCM |
+| Wwise `.wem` | **Không** (Wwise là middleware, không phải kiểu nén của UE) |
+
+Hệ quả trực tiếp — hai tiêu chí của bản 2 **không chứng minh được end-to-end**, và đã bị
+hạ xuống mức unit ở §12:
+
+- Tiêu chí 4 (`BLEND_Masked` → `alphaMode: "MASK"`): không có material masked nào.
+- Tiêu chí 5 (ORM repack đúng kênh): không có texture SpecularMasks nào.
+
+**Cách bù: binder nhận `CMaterialParams2` (§5.1) nên test tự dựng được material.** Mọi kênh,
+mọi `EBlendMode`, URI vượt cấp, swizzle ORM — tất cả kiểm được ở mức unit mà không cần
+asset nào. Cái mất là phần *nối dây* giữa binder và writer chỉ còn được chứng minh trên
+đúng một đường: base color. Ghi rõ ở đây để không ai tưởng nhiều hơn thế.
+
+Hai đường thoát đã cân nhắc và **không** chọn: (a) cài UE 5.8 rồi dựng lại fixture — nhiều
+ngày, và không đủ đĩa; (b) dùng asset Stellar Blade làm cổng thủ công — không lặp lại được,
+không tự động hoá được, và không phân phối lại được. Đường đúng về lâu dài là **xin dự án
+sinh fixture từ upstream** rồi đóng góp ngược một material PBR; việc đó không chặn đợt này.
+
+### 9.2 Blender chạy thật, trong CI
+
+Điều kiện thành công số 1 của §1 — *"import vào Blender, hiện đúng texture, không phải mesh
+trắng trơn"* — ở bản 2 **không có gì kiểm chứng cả**. glTF-Validator chứng minh file *hợp
+chuẩn*, một mệnh đề khác hẳn: nó không biết Blender phân giải URI tương đối từ thư mục nào,
+không biết byte PNG có decode được không, không biết ảnh có rơi đúng node không. Đó đúng là
+ba cách sinh ra một mesh trắng trơn.
+
+→ Ghim một bản Blender y như đã ghim validator, chạy `blender -b -P` trên `.glb` vừa export,
+và assert: import không lỗi; mọi material có node Image Texture; mọi `image.filepath` phân
+giải được; mọi `image.has_data` là `True`. Cùng hình dạng phụ thuộc với validator, cùng chỗ
+trong `cli-tests.yml`.
+
+Trên fixture hiện tại cổng này chỉ chạm được đường base color (§9.1) — nhưng nó vẫn bắt
+được đúng lớp lỗi mà validator không bắt được, và nó biến điều kiện số 1 từ nguyện vọng
+thành cổng.
 
 | Loại | Nội dung |
 |---|---|
-| Unit | `GltfMaterialBinder`: ánh xạ từng kênh; URI vượt cấp (`../Common/...`); percent-encode tên có khoảng trắng; kênh thiếu thì bỏ trống chứ không bịa; `alphaMode`/`alphaCutoff`/`doubleSided` theo từng `EBlendMode` |
+| Unit | `GltfMaterialBinder`, trên `CMaterialParams2` **tự dựng** (§5.1): ánh xạ từng kênh; URI vượt cấp (`../Common/...`); percent-encode tên có khoảng trắng; kênh thiếu thì bỏ trống chứ không bịa; `alphaMode`/`alphaCutoff`/`doubleSided` theo từng `EBlendMode`. Đây là chỗ tiêu chí 4 và 5 được chứng minh |
 | Unit | `TextureFileNamer`: HDR → `.hdr`; all-mips → `_MIP{n}`; `UTexture2DArray` → `_LAYER{i}`; và **cùng kết quả với `TextureExporter` trên mọi tổ hợp** |
 | Unit | `OrmTextureExporter`: G/B hoán vị đúng; `ObjectPath` khác `TextureExporter` nên cả hai cùng qua được dedupe |
-| Vét cạn | BC1/BC3/BC4/BC5 trên mọi tổ hợp endpoint/index, so số học chính xác, **lệch = 0** |
-| Cấu trúc glTF | Trên fixture UE5_8: `\|NORMAL\| = 1` toàn bộ vertex; có `images`/`textures`; mọi URI phân giải được tới file thật; `alphaMode` đúng với material masked/translucent; tên datablock = tên file |
+| Vét cạn | BC1/BC3/BC4/BC5 trên mọi tổ hợp endpoint/index. **Đặc tả hành vi hiện tại** (BC1/2/3 cắt, BC4/5 tròn), không ép hành vi mới — xem §6.2. Test đỏ khi upstream đổi công thức, đó là mục đích |
+| Cấu trúc glTF | Trên fixture UE5_8: `\|NORMAL\| = 1` toàn bộ vertex; có `images`/`textures`; mọi URI phân giải được tới file thật; tên datablock = tên file. **Không** assert alphaMode masked ở đây — fixture không có material masked (§9.1) |
 | Chuẩn | glTF-Validator ghim phiên bản, trong CI. "Đúng chuẩn" là lời hứa cốt lõi nên không tự viết validator rút gọn |
-| Audio | Assert bằng **magic bytes** — `.wem` bắt đầu bằng `RIFF`, `.ogg` bằng `OggS`, `.wav` bằng `RIFF`+`WAVE`. Bắt được lớp lỗi thật sự có khả năng xảy ra (lấy nhầm chunk, lệch offset streaming, nhãn định dạng sai) |
-| Fixture mới | Một animation nén ACL, một audio Wwise — không có thì không thể tuyên bố thay được FModel |
+| Blender | Blender ghim phiên bản, headless, trong CI: import được; mọi `image.filepath` phân giải; mọi `image.has_data` là `True` (§9.2) |
+| Audio | Assert bằng **magic bytes** — `.binka` bắt đầu bằng `BCF`, `.ogg` bằng `OggS`, `.wav` bằng `RIFF`+`WAVE`. Bắt được lớp lỗi thật sự có khả năng xảy ra (lấy nhầm chunk, lệch offset streaming, nhãn định dạng sai). **Không** assert `.wem`: không có fixture Wwise (§9.1) |
 | Hồi quy | `tools/parity/` + một manifest baseline commit vào repo cho fixture UE5_8 |
 
 Test tích hợp phải export vào **thư mục tạm mới mỗi lần chạy** — nếu không, file còn sót
@@ -643,26 +814,42 @@ Bộ script đối chiếu chuyển từ scratchpad vào `tools/parity/`: `PixDi
 
 | Pha | Nội dung | Kết quả dùng được |
 |---|---|---|
-| **0** | §6.3 dấu phân cách đường dẫn · `cli-tests.yml` · ghim glTF-Validator | **Từ đây mới kiểm chứng được bất cứ thứ gì.** Không có Pha 0 thì tiêu chí 1, 2, 3 không chạy được trong CI |
-| **1** | §6.1 chuẩn hoá NORMAL + sửa morph delta · §5 `GltfMaterialBinder` · §5.6 `OrmTextureExporter` · §4.5 `MeshExportContext` · §5.4 `TextureFileNamer` + luật format · §8.2 quy ước tên · §8 hợp đồng · test unit + cấu trúc glTF + validator | **`.glb` vào Blender có texture** — gỡ nút thắt chính |
+| **0** | §4.6 fork + rebase nhánh · §6.3 dấu phân cách đường dẫn · `cli-tests.yml` · ghim glTF-Validator · ghim Blender (§9.2) | **Từ đây mới kiểm chứng được bất cứ thứ gì.** Không có Pha 0 thì tiêu chí 1, 2, 3 không chạy được trong CI |
+| **1** | §6.1 chuẩn hoá NORMAL + sửa morph delta · §5 `GltfMaterialBinder` · §5.6 `OrmTextureExporter` · §4.5 `MeshExportContext` · §5.4 `TextureFileNamer` + luật format · §8.2 quy ước tên · §8 hợp đồng · test unit + cấu trúc glTF + validator + cổng Blender | **`.glb` vào Blender có texture** — gỡ nút thắt chính |
 | **2** | §7.1 cờ còn thiếu · §7.2 `--flip-normal-y` · §7.3 cảnh báo Nanite · §7.5 manifest (+ `ExportResult.ClassName`) · §7.6 `info` mở rộng | Script bpy chạy tự động được |
-| **3** | §7.4 audio · ACL + fixture animation · §6.2 BC làm tròn + test vét cạn · §10 tài liệu hoàn chỉnh | Thay hẳn FModel |
+| **3** | §7.4 audio · ACL qua `info` · test đặc tả BC · §10 tài liệu hoàn chỉnh | Không phải quay lại FModel để trích |
 
 Mỗi pha kết thúc ở một trạng thái dùng được, không phải nửa vời.
+
+> **Đích của đợt này là Pha 0 + Pha 1.** Hai pha ấy giao đúng điều kiện thành công số 1 của
+> §1 — một `.glb` mở trong Blender có texture — và sau các sửa đổi của bản 3 thì **kiểm
+> chứng được trọn vẹn trên nền hiện có**. Pha 2 và 3 là tiện nghi: manifest, cờ, audio.
+> Quyết định làm hay không **sau khi** đã dùng đầu ra của Pha 1 cho một việc thật; quyết
+> bây giờ là quyết mù.
+>
+> Pha 3 cũng đã co lại so với bản 2: §6.2 chuyển thành báo cáo upstream, và yêu cầu
+> "fixture ACL + fixture Wwise" bị xoá vì không dựng được (§9.1). Mục tiêu "thay hẳn
+> FModel" hạ thành "không phải quay lại FModel để *trích*" — vì §7.4 đã thừa nhận
+> `.wem`/`.binka` vẫn cần vgmstream ở bước sau, nên "một công cụ duy nhất" chưa bao giờ
+> đạt được bằng đợt này.
 
 ---
 
 ## 12. Tiêu chí nghiệm thu
 
-1. `cue4 export` một skeletal mesh có material nhiều lớp → `.glb` chứa `images` và `textures`; mọi URI phân giải được tới file có thật trên đĩa.
-2. glTF-Validator (phiên bản đã ghim) chạy trên output không báo lỗi nào.
-3. `|NORMAL| = 1` (sai số < 1e-6) trên toàn bộ vertex của mọi fixture.
-4. Material có `BLEND_Masked` cho ra `alphaMode: "MASK"` kèm `alphaCutoff` bằng `OpacityMaskClipValue` của material đó.
-5. `metallicRoughnessTexture` trỏ tới ảnh ORM đã repack, và kênh G của ảnh đó bằng kênh B của `SpecularMasks` gốc (§5.6).
-6. Hai lần chạy `export` liên tiếp cùng tham số cho ra manifest **giống hệt nhau từng byte**.
-7. Export chạy đúng trên Linux: cây thư mục đầu ra khớp `<package path>/<ObjectName>.<ext>`, không có file nào mang `\` trong tên.
-8. `cue4 info` báo `acl: true` sau khi dựng lại native; một animation nén ACL xuất thành công. Khi `paksDir` sai, `info` vẫn in được khối `native` và trả exit 4.
-9. Một asset audio Wwise xuất ra file `.wem` có magic `RIFF` và kích thước khớp chunk nguồn.
-10. Test vét cạn BC1/BC3/BC4/BC5 xanh với ngưỡng lệch = 0.
-11. Morph target xuất ra có delta **không** chuẩn hoá, và nằm ở khe normal chứ không phải khe tangent.
-12. `docs/cue4-output-contract.md` mô tả đủ để viết script bpy mà không cần đọc mã nguồn.
+Đánh dấu **[P0]**/**[P1]** là tiêu chí thuộc đích của đợt này (§11); còn lại thuộc Pha 2–3.
+
+1. **[P1]** `cue4 export` một skeletal mesh có material → `.glb` chứa `images` và `textures`; mọi URI phân giải được tới file có thật trên đĩa. *(Trên fixture UE5_8 điều này chỉ chạm đường base color — xem §9.1.)*
+2. **[P0]** glTF-Validator (phiên bản đã ghim) chạy trên output không báo lỗi nào.
+3. **[P1]** `|NORMAL| = 1` (sai số < 1e-6) trên toàn bộ vertex của mọi fixture.
+4. **[P1, mức unit]** Với `CMaterialParams2` dựng sẵn mang `BLEND_Masked`, binder cho ra `alphaMode: "MASK"` kèm `alphaCutoff` bằng `OpacityMaskClipValue` của material. *Hạ từ end-to-end xuống unit: fixture không có material masked nào (§9.1).*
+5. **[P1, mức unit]** Với `CMaterialParams2` dựng sẵn mang `SpecularMasks`, `metallicRoughnessTexture` trỏ tới ảnh ORM đã repack và kênh G của ảnh đó bằng kênh B của nguồn (§5.6). *Hạ xuống unit: fixture không có texture SpecularMasks nào (§9.1).*
+6. **[P1]** `.glb` export ra **import được vào Blender** (bản đã ghim, headless); mọi material có node Image Texture; mọi `image.filepath` phân giải được; mọi `image.has_data` là `True` (§9.2).
+7. **[P0]** Export chạy đúng trên Linux: cây thư mục đầu ra khớp `<package path>/<ObjectName>.<ext>`, không có file nào mang `\` trong tên.
+8. **[P1]** Morph target xuất ra có delta **không** chuẩn hoá, và nằm ở khe normal chứ không phải khe tangent.
+9. **[P1]** Tên datablock mesh bằng tên file `.glb` bỏ đuôi, cho mọi tổ hợp `--mesh-quality` × `--nanite`. *(Không cam kết duy nhất trên toàn scene — §8.2.)*
+10. **[P1]** `docs/cue4-output-contract.md` mô tả đủ để viết `docs/examples/import_glb.py` mà không cần đọc mã nguồn — và script ấy chạy được trên output thật.
+11. Hai lần chạy `export` liên tiếp cùng tham số cho ra manifest **giống hệt nhau từng byte**.
+12. `cue4 info` báo `acl: true` sau khi dựng lại native. Khi `paksDir` sai, `info` vẫn in được khối `native` và trả exit 4. *(Bỏ vế "một animation nén ACL xuất thành công": không có fixture ACL và không dựng được — §9.1.)*
+13. Một asset audio **BinkAudio** xuất ra file `.binka` có magic `BCF` và kích thước khớp chunk nguồn. *(Đổi từ Wwise `.wem`: không có fixture Wwise — §9.1.)*
+14. Test đặc tả BC1/BC3/BC4/BC5 xanh, ghi đúng hành vi hiện tại (BC1/2/3 cắt, BC4/5 tròn) — §6.2.

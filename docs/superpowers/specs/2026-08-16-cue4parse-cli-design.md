@@ -75,6 +75,15 @@ the only conflict surface on `git pull --rebase`, and upstream touches them
 infrequently. Everything else, `publish.ps1` included, lives under
 `CUE4Parse.Cli/`.
 
+> **Superseded — true of the CLI alone, false once the Blender pipeline lands.** The
+> follow-on work in
+> [2026-08-16-cue4-blender-pipeline-design.md](2026-08-16-cue4-blender-pipeline-design.md)
+> modifies ~14 files inside `CUE4Parse-Conversion/`, with signature-breaking changes, in
+> files upstream commits to roughly 66 times a year. The two-file claim above does not
+> survive it. That spec's §4.6 replaces this paragraph: fork to a private remote, then split
+> the changes into a bucket destined for upstream PRs and a bucket kept local. Read §4.6
+> before relying on anything here about rebase cost.
+
 ## Command surface
 
 ```
