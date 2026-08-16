@@ -112,14 +112,34 @@ public static class ProviderFactory
     }
 
     /// <summary>
+    /// Loads the compression backends, exactly once per process.
+    /// <para>
     /// Both helpers fall back to downloading their native library, and both resolve a
     /// bare filename against the <em>working directory</em> — so the default leaves a
     /// multi-megabyte dll wherever the tool happened to be run, and re-downloads it in
     /// the next directory. Pointing them at the cache makes that a once-per-machine cost.
     /// Oodle keeps its null path when the statically linked native carries it, because
     /// an explicit path bypasses that check.
+    /// </para>
+    /// <para>
+    /// The <see cref="Lazy{T}"/> is load-bearing, not a micro-optimisation.
+    /// <c>OodleHelper</c> and <c>ZlibHelper</c> guard themselves (<c>if (Instance is not
+    /// null) return;</c>), but <c>DetexHelper.Initialize</c> does not: it disposes the
+    /// current instance and loads the native library again on every call. Calling this
+    /// once per provider — which is once per command, and once per test — turned into a
+    /// repeated native load/free cycle that intermittently segfaulted the process during
+    /// finalization. Initializing once removes the cycle entirely.
+    /// </para>
     /// </summary>
-    private static void InitializeCompression()
+    public static void InitializeCompression() => _ = CompressionInit.Value;
+
+    private static readonly Lazy<bool> CompressionInit = new(() =>
+    {
+        InitializeCompressionCore();
+        return true;
+    }, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private static void InitializeCompressionCore()
     {
         Directory.CreateDirectory(CachePaths.Root);
 
