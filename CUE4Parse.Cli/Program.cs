@@ -25,6 +25,32 @@ listCmd.SetAction(pr => Run(pr, ctx => ListCommand.Execute(ctx, new ListOptions(
     CountOnly: pr.GetValue(countOpt)))));
 root.Subcommands.Add(listCmd);
 
+var dumpPathsArg = new Argument<string[]>("paths")
+    { Description = "Asset paths", Arity = ArgumentArity.ZeroOrMore };
+var dumpExportOpt = new Option<string?>("--export") { Description = "Serialize only this named export" };
+var dumpClassOpt = new Option<string?>("--class") { Description = "Keep only exports of this class" };
+var dumpOutOpt = new Option<FileInfo?>("--output", "-o") { Description = "Write to a file instead of stdout" };
+var dumpIndentOpt = new Option<bool>("--indent") { Description = "Pretty-print single-asset output" };
+var dumpForceOpt = new Option<bool>("--force") { Description = "Bypass the 1000-asset safety limit" };
+
+var dumpCmd = new Command("dump", "Deserialize exports to JSON");
+dumpCmd.Arguments.Add(dumpPathsArg);
+CriteriaOptions.AddTo(dumpCmd);
+dumpCmd.Options.Add(dumpExportOpt);
+dumpCmd.Options.Add(dumpClassOpt);
+dumpCmd.Options.Add(dumpOutOpt);
+dumpCmd.Options.Add(dumpIndentOpt);
+dumpCmd.Options.Add(dumpForceOpt);
+dumpCmd.SetAction(pr => Run(pr, ctx => DumpCommand.Execute(ctx, new DumpOptions(
+    Paths: pr.GetValue(dumpPathsArg) ?? [],
+    Criteria: CriteriaOptions.Read(pr),
+    ExportName: pr.GetValue(dumpExportOpt),
+    ClassName: pr.GetValue(dumpClassOpt),
+    Output: pr.GetValue(dumpOutOpt),
+    Indent: pr.GetValue(dumpIndentOpt),
+    Force: pr.GetValue(dumpForceOpt)))));
+root.Subcommands.Add(dumpCmd);
+
 var parseResult = root.Parse(args);
 
 // System.CommandLine exits 1 on parse errors; the contract requires 2.
