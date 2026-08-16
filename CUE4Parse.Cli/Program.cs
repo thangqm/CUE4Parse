@@ -134,6 +134,34 @@ exportCmd.SetAction(async (pr, ct) => await RunAsync(pr, async ctx => await Expo
     ct)));
 root.Subcommands.Add(exportCmd);
 
+var updateKeysOpt = new Option<bool>("--aes-keys") { Description = "Refresh AES keys only" };
+var updateMappingsOpt = new Option<bool>("--usmap") { Description = "Refresh mappings only" };
+
+var updateCmd = new Command("update", "Fetch AES keys and mappings from fortnite-api.com");
+updateCmd.Options.Add(updateKeysOpt);
+updateCmd.Options.Add(updateMappingsOpt);
+updateCmd.SetAction(async (pr, ct) =>
+{
+    ConfigureLogging(pr.GetValue(GlobalOptions.Verbose));
+    var output = new JsonOutput(Console.Out);
+    try
+    {
+        using var http = new HttpClient();
+        // update needs no mounted provider, so it does not build a CommandContext profile.
+        var context = new CommandContext(
+            new ResolvedProfile("", default, null, null, new Dictionary<string, string>()), output, false);
+
+        return await UpdateCommand.ExecuteAsync(
+            context, new FortniteApiClient(http),
+            pr.GetValue(updateKeysOpt), pr.GetValue(updateMappingsOpt), ct);
+    }
+    catch (Exception ex)
+    {
+        return Classify(ex);
+    }
+});
+root.Subcommands.Add(updateCmd);
+
 var parseResult = root.Parse(args);
 
 // System.CommandLine exits 1 on parse errors; the contract requires 2.

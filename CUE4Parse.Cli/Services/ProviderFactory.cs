@@ -11,6 +11,9 @@ namespace CUE4Parse.Cli.Services;
 
 public static class ProviderFactory
 {
+    private static bool IsAuto(string? value)
+        => string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase);
+
     public static DefaultFileProvider Create(ResolvedProfile profile)
     {
         if (!Directory.Exists(profile.PaksDir))
@@ -20,13 +23,23 @@ public static class ProviderFactory
                 $"Paks directory not found: {profile.PaksDir}");
         }
 
-        if (profile.Mappings is { } mappingsPath &&
-            !string.Equals(mappingsPath, "auto", StringComparison.OrdinalIgnoreCase) &&
-            !File.Exists(mappingsPath))
+        // "auto" resolves to the cache written by 'cue4 update'.
+        var mappingsPath = profile.Mappings switch
         {
+            null => null,
+            var m when IsAuto(m) => CachePaths.MappingsFile,
+            var m => m,
+        };
+
+        if (mappingsPath is not null && !File.Exists(mappingsPath))
+        {
+            var hint = IsAuto(profile.Mappings)
+                ? " Run 'cue4 update' to download them."
+                : string.Empty;
+
             throw new CliException(
                 ExitCode.Mappings, "MAPPINGS_NOT_FOUND",
-                $"Mappings file not found: {mappingsPath}");
+                $"Mappings file not found: {mappingsPath}.{hint}");
         }
 
         // Order matters: compression backends must be ready before any archive is read.
@@ -42,17 +55,34 @@ public static class ProviderFactory
         try
         {
             // Mappings are assigned before Initialize, matching every call site in
-            // CUE4Parse.Tests. Task 11 replaces this with the "auto" resolution.
-            if (profile.Mappings is { } path &&
-                !string.Equals(path, "auto", StringComparison.OrdinalIgnoreCase))
-            {
-                provider.MappingsContainer = new FileUsmapTypeMappingsProvider(path);
-            }
+            // CUE4Parse.Tests.
+            if (mappingsPath is not null)
+                provider.MappingsContainer = new FileUsmapTypeMappingsProvider(mappingsPath);
 
             provider.Initialize();
 
             var keys = new Dictionary<FGuid, FAesKey>();
-            if (profile.MainAesKey is { } main) keys[new FGuid()] = ParseAesKey(main);
+
+            if (IsAuto(profile.MainAesKey))
+            {
+                var cached = CachePaths.ReadCachedKeys()
+                    ?? throw new CliException(
+                        ExitCode.AesKey, "AES_KEYS_NOT_CACHED",
+                        $"No cached AES keys at {CachePaths.KeysFile}. Run 'cue4 update' first.");
+
+                if (!string.IsNullOrEmpty(cached.MainKey)) keys[new FGuid()] = ParseAesKey(cached.MainKey);
+
+                // Dynamic keys are not optional: Fortnite ships encrypted chunks under
+                // non-zero GUIDs that the main key will not mount.
+                foreach (var (guidText, keyText) in cached.DynamicKeys)
+                    keys[ParseAesGuid(guidText)] = ParseAesKey(keyText);
+            }
+            else if (profile.MainAesKey is { } main)
+            {
+                keys[new FGuid()] = ParseAesKey(main);
+            }
+
+            // Profile-level dynamic keys are applied last so they win over the cache.
             foreach (var (guidText, keyText) in profile.DynamicKeys)
                 keys[ParseAesGuid(guidText)] = ParseAesKey(keyText);
 
