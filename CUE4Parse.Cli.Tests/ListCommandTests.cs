@@ -10,21 +10,19 @@ public class ListCommandTests
     [Fact]
     public void ExecuteEmitsOneNdjsonObjectPerAssetWithPathAndSize()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context();
 
         var code = ListCommand.Execute(context, new ListOptions(
             new MatchCriteria(Globs: ["**/*.uasset"], Limit: 3), CountOnly: false));
 
         Assert.Equal((int)ExitCode.Success, code);
 
-        var lines = sw.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = FixtureSupport.Ndjson(sw);
         Assert.NotEmpty(lines);
         Assert.True(lines.Length <= 3, "Limit was not applied.");
 
-        foreach (var line in lines)
+        foreach (var parsed in lines)
         {
-            var parsed = JObject.Parse(line);
             Assert.EndsWith(".uasset", parsed["path"]?.Value<string>());
             Assert.NotNull(parsed["size"]);
         }
@@ -38,8 +36,7 @@ public class ListCommandTests
     [Fact]
     public void ExecuteWithCountOnlyEmitsASingleCountObject()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context();
 
         var code = ListCommand.Execute(context, new ListOptions(new MatchCriteria(), CountOnly: true));
 
@@ -52,8 +49,7 @@ public class ListCommandTests
     [Fact]
     public void ExecuteMountsAnEncryptedArchiveWhenTheKeyIsSupplied()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.EncryptedProfile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context(FixtureSupport.EncryptedProfile());
 
         var code = ListCommand.Execute(context, new ListOptions(new MatchCriteria(), CountOnly: true));
 
@@ -64,16 +60,12 @@ public class ListCommandTests
     [Fact]
     public void ExecuteEmitsEachPathOnlyOnce()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context();
 
         ListCommand.Execute(context, new ListOptions(new MatchCriteria(Globs: ["**/*.uasset"]), CountOnly: false));
 
         // FileProviderDictionary.Keys concatenates every mounted index and can repeat.
-        var paths = sw.ToString()
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => JObject.Parse(line)["path"]!.Value<string>())
-            .ToArray();
+        var paths = FixtureSupport.Ndjson(sw).Select(line => line["path"]!.Value<string>()).ToArray();
 
         Assert.Equal(paths.Length, paths.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
@@ -81,8 +73,7 @@ public class ListCommandTests
     [Fact]
     public void ExecuteWithANonMatchingGlobEmitsNothingAndStillSucceeds()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context();
 
         var code = ListCommand.Execute(context, new ListOptions(
             new MatchCriteria(Globs: ["**/NoSuchFolder/**"]), CountOnly: false));

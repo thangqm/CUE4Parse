@@ -7,7 +7,7 @@ namespace CUE4Parse.Cli.Commands;
 public static class UpdateCommand
 {
     public static async Task<int> ExecuteAsync(
-        CommandContext context, IFortniteApiClient client, bool keys, bool mappings, CancellationToken ct)
+        JsonOutput output, FortniteApiClient client, bool keys, bool mappings, CancellationToken ct)
     {
         // With neither flag, refresh both.
         if (!keys && !mappings) keys = mappings = true;
@@ -15,21 +15,25 @@ public static class UpdateCommand
         Directory.CreateDirectory(CachePaths.Root);
         var updated = new List<string>();
 
-        if (keys)
-        {
-            var fetched = await client.GetAesKeysAsync(ct);
-            await File.WriteAllTextAsync(
-                CachePaths.KeysFile, JsonConvert.SerializeObject(fetched, Formatting.Indented), ct);
-            updated.Add(CachePaths.KeysFile);
-        }
+        // Two independent round trips, one of which downloads several megabytes.
+        var keysTask = keys ? WriteKeysAsync(client, ct) : Task.CompletedTask;
+        var mappingsTask = mappings
+            ? client.DownloadMappingsAsync(CachePaths.MappingsFile, ct)
+            : Task.CompletedTask;
 
-        if (mappings)
-        {
-            await File.WriteAllBytesAsync(CachePaths.MappingsFile, await client.GetMappingsAsync(ct), ct);
-            updated.Add(CachePaths.MappingsFile);
-        }
+        await Task.WhenAll(keysTask, mappingsTask);
 
-        context.Output.WriteResult(new { status = "ok", updated }, indent: true);
+        if (keys) updated.Add(CachePaths.KeysFile);
+        if (mappings) updated.Add(CachePaths.MappingsFile);
+
+        output.WriteResult(new { status = "ok", updated }, indent: true);
         return (int)ExitCode.Success;
+    }
+
+    private static async Task WriteKeysAsync(FortniteApiClient client, CancellationToken ct)
+    {
+        var fetched = await client.GetAesKeysAsync(ct);
+        await File.WriteAllTextAsync(
+            CachePaths.KeysFile, JsonConvert.SerializeObject(fetched, Formatting.Indented), ct);
     }
 }

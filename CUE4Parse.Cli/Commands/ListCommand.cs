@@ -11,7 +11,7 @@ public static class ListCommand
     {
         using var provider = ProviderFactory.Create(context.Profile);
 
-        var matches = AssetMatcher.Filter(provider.Files.Keys, options.Criteria);
+        var matches = AssetMatcher.Filter(provider.Files, options.Criteria);
 
         if (options.CountOnly)
         {
@@ -19,19 +19,18 @@ public static class ListCommand
             // truncated listing from a complete one without a second invocation.
             context.Output.WriteResult(new
             {
-                count = matches.Paths.Count,
+                count = matches.Files.Count,
                 totalMatched = matches.TotalMatched,
-                truncated = matches.Paths.Count < matches.TotalMatched,
+                truncated = matches.Files.Count < matches.TotalMatched,
             });
             return (int)ExitCode.Success;
         }
 
-        foreach (var path in matches.Paths)
+        foreach (var file in matches.Files)
         {
-            var file = provider.Files[path];
             context.Output.WriteLine(new
             {
-                path,
+                path = file.Path,
                 size = file.Size,
                 extension = file.Extension,
                 encrypted = file.IsEncrypted,

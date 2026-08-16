@@ -61,34 +61,32 @@ public class AssetMatcherTests
     [Fact]
     public void EnforceLimitThrowsUsageErrorWithMatchCountWhenExceeded()
     {
-        var result = new MatchResult([], 1001);
         var ex = Assert.Throws<CliException>(
-            () => AssetMatcher.EnforceLimit(result, new MatchCriteria(), force: false));
+            () => AssetMatcher.EnforceLimit(1001, new MatchCriteria(), force: false));
 
         Assert.Equal(ExitCode.Usage, ex.ExitCode);
         Assert.Equal("LIMIT_EXCEEDED", ex.ErrorCode);
         Assert.Contains("1001", ex.Message);
     }
 
+    /// <summary>
+    /// The guard takes the true total, never the truncated count — otherwise
+    /// --limit 100 against 50,000 matches would slip straight past it.
+    /// </summary>
     [Fact]
     public void EnforceLimitUsesTheTrueTotalNotTheTruncatedCount()
-    {
-        // The truncated list is small; the guard must still fire on the real total.
-        var result = new MatchResult(["a", "b"], 50_000);
-        Assert.Throws<CliException>(
-            () => AssetMatcher.EnforceLimit(result, new MatchCriteria(), force: false));
-    }
+        => Assert.Throws<CliException>(
+            () => AssetMatcher.EnforceLimit(50_000, new MatchCriteria(), force: false));
 
     [Fact]
     public void EnforceLimitTreatsAnExplicitLimitAsConsent()
-        => AssetMatcher.EnforceLimit(
-            new MatchResult(["a"], 50_000), new MatchCriteria(Limit: 1), force: false);
+        => AssetMatcher.EnforceLimit(50_000, new MatchCriteria(Limit: 1), force: false);
 
     [Fact]
     public void EnforceLimitAllowsExceedingWhenForced()
-        => AssetMatcher.EnforceLimit(new MatchResult([], 5000), new MatchCriteria(), force: true);
+        => AssetMatcher.EnforceLimit(5000, new MatchCriteria(), force: true);
 
     [Fact]
     public void EnforceLimitAllowsExactlyTheLimit()
-        => AssetMatcher.EnforceLimit(new MatchResult([], 1000), new MatchCriteria(), force: false);
+        => AssetMatcher.EnforceLimit(AssetMatcher.DefaultLimit, new MatchCriteria(), force: false);
 }

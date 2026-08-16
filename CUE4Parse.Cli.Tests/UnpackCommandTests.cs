@@ -10,9 +10,8 @@ public class UnpackCommandTests
     [Fact]
     public void UnpackWritesFilesAndReportsEachAsNdjson()
     {
-        var outDir = new DirectoryInfo(Directory.CreateTempSubdirectory().FullName);
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var outDir = Directory.CreateTempSubdirectory();
+        var (context, sw) = FixtureSupport.Context();
 
         var code = UnpackCommand.Execute(context, new UnpackOptions(
             Paths: [],
@@ -22,8 +21,7 @@ public class UnpackCommandTests
         Assert.Equal((int)ExitCode.Success, code);
         Assert.NotEmpty(outDir.GetFiles("*", SearchOption.AllDirectories));
 
-        foreach (var line in sw.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            Assert.Equal("ok", JObject.Parse(line)["status"]?.Value<string>());
+        Assert.All(FixtureSupport.Ndjson(sw), line => Assert.Equal("ok", line["status"]?.Value<string>()));
     }
 
     /// <summary>
@@ -33,8 +31,8 @@ public class UnpackCommandTests
     [Fact]
     public void UnpackWritesTheUexpPayloadAlongsideTheUasset()
     {
-        var outDir = new DirectoryInfo(Directory.CreateTempSubdirectory().FullName);
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(new StringWriter()), Verbose: false);
+        var outDir = Directory.CreateTempSubdirectory();
+        var (context, _) = FixtureSupport.Context();
 
         UnpackCommand.Execute(context, new UnpackOptions(
             Paths: ["CUE4ParseFixtures/Content/Fixtures/Properties/DA_AllProperties.uasset"],
@@ -49,8 +47,8 @@ public class UnpackCommandTests
     [Fact]
     public void UnpackFlatWritesAllFilesIntoTheOutputRoot()
     {
-        var outDir = new DirectoryInfo(Directory.CreateTempSubdirectory().FullName);
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(new StringWriter()), Verbose: false);
+        var outDir = Directory.CreateTempSubdirectory();
+        var (context, _) = FixtureSupport.Context();
 
         UnpackCommand.Execute(context, new UnpackOptions(
             Paths: ["CUE4ParseFixtures/Content/Fixtures/Properties/DA_AllProperties.uasset"],
@@ -88,6 +86,18 @@ public class UnpackCommandTests
         Assert.Equal(2, written.Count);
     }
 
+    /// <summary>Without --flat the destination is injective, so nothing is recorded.</summary>
+    [Fact]
+    public void NestedDestinationRecordsNothingBecauseItCannotCollide()
+    {
+        var written = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        UnpackCommand.ResolveDestination(@"C:\out", flat: false, "Game/Chars/A.uasset", written);
+        UnpackCommand.ResolveDestination(@"C:\out", flat: false, "Game/Props/A.uasset", written);
+
+        Assert.Empty(written);
+    }
+
     /// <summary>
     /// A broad --flat unpack of a real archive must succeed: a glob matching both a
     /// package and its own .uexp must not be mistaken for a collision.
@@ -95,9 +105,8 @@ public class UnpackCommandTests
     [Fact]
     public void UnpackFlatOverAnEntireArchiveDoesNotFalselyReportACollision()
     {
-        var outDir = new DirectoryInfo(Directory.CreateTempSubdirectory().FullName);
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var outDir = Directory.CreateTempSubdirectory();
+        var (context, sw) = FixtureSupport.Context();
 
         var code = UnpackCommand.Execute(context, new UnpackOptions(
             Paths: [],
@@ -106,8 +115,6 @@ public class UnpackCommandTests
 
         Assert.Equal((int)ExitCode.Success, code);
         Assert.Empty(outDir.GetDirectories());
-        Assert.All(
-            sw.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries),
-            line => Assert.Equal("ok", JObject.Parse(line)["status"]?.Value<string>()));
+        Assert.All(FixtureSupport.Ndjson(sw), line => Assert.Equal("ok", line["status"]?.Value<string>()));
     }
 }

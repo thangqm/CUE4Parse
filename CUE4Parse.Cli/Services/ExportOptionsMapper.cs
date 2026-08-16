@@ -10,7 +10,10 @@ public static class ExportOptionsMapper
 {
     // Each map is spelled with its element type: a target-typed `new()` cannot be
     // used where the same call is what infers T.
-    private static readonly Dictionary<string, EMeshFormat> MeshFormats = new()
+    // These are the single source of each flag's vocabulary — Program.cs drives
+    // AcceptOnlyFromAmong off the same keys, so the parser and the mapper cannot
+    // disagree about which values are legal.
+    public static readonly Dictionary<string, EMeshFormat> MeshFormats = new()
     {
         ["actorx"] = EMeshFormat.ActorX,
         ["gltf2"] = EMeshFormat.Gltf2,
@@ -18,7 +21,7 @@ public static class ExportOptionsMapper
         ["usd"] = EMeshFormat.USD,
     };
 
-    private static readonly Dictionary<string, ENaniteMeshFormat> NaniteFormats = new()
+    public static readonly Dictionary<string, ENaniteMeshFormat> NaniteFormats = new()
     {
         ["nanite-only"] = ENaniteMeshFormat.NaniteOnly,
         ["no-nanite"] = ENaniteMeshFormat.NoNanite,
@@ -26,14 +29,14 @@ public static class ExportOptionsMapper
         ["nanite-last"] = ENaniteMeshFormat.NaniteLast,
     };
 
-    private static readonly Dictionary<string, EMeshQuality> MeshQualities = new()
+    public static readonly Dictionary<string, EMeshQuality> MeshQualities = new()
     {
         ["highest"] = EMeshQuality.Highest,
         ["lowest"] = EMeshQuality.Lowest,
         ["all"] = EMeshQuality.All,
     };
 
-    private static readonly Dictionary<string, ETextureFormat> TextureFormats = new()
+    public static readonly Dictionary<string, ETextureFormat> TextureFormats = new()
     {
         ["png"] = ETextureFormat.Png,
         ["jpeg"] = ETextureFormat.Jpeg,
@@ -41,7 +44,7 @@ public static class ExportOptionsMapper
         ["webp"] = ETextureFormat.Webp,
     };
 
-    private static readonly Dictionary<string, ETexturePlatform> TexturePlatforms = new()
+    public static readonly Dictionary<string, ETexturePlatform> TexturePlatforms = new()
     {
         ["desktop"] = ETexturePlatform.DesktopMobile,
         ["xbox-ps4"] = ETexturePlatform.XboxAndPlaystation4,
@@ -49,14 +52,14 @@ public static class ExportOptionsMapper
         ["ps5"] = ETexturePlatform.Playstation5,
     };
 
-    private static readonly Dictionary<string, EMaterialDepth> MaterialDepths = new()
+    public static readonly Dictionary<string, EMaterialDepth> MaterialDepths = new()
     {
         ["top-layer-only"] = EMaterialDepth.TopLayerOnly,
         ["all-layers-no-ref"] = EMaterialDepth.AllLayersNoRef,
         ["all-layers"] = EMaterialDepth.AllLayers,
     };
 
-    private static readonly Dictionary<string, ESocketFormat> SocketFormats = new()
+    public static readonly Dictionary<string, ESocketFormat> SocketFormats = new()
     {
         ["socket"] = ESocketFormat.Socket,
         ["bone"] = ESocketFormat.Bone,

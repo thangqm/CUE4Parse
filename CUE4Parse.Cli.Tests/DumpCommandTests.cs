@@ -10,8 +10,7 @@ public class DumpCommandTests
     [Fact]
     public void DumpEmitsNdjsonWithOneObjectPerMatchedAsset()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context();
 
         var code = DumpCommand.Execute(context, new DumpOptions(
             Paths: [],
@@ -20,11 +19,10 @@ public class DumpCommandTests
 
         Assert.Equal((int)ExitCode.Success, code);
 
-        var lines = sw.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = FixtureSupport.Ndjson(sw);
         Assert.NotEmpty(lines);
-        foreach (var line in lines)
+        foreach (var parsed in lines)
         {
-            var parsed = JObject.Parse(line);
             Assert.NotNull(parsed["path"]);
             Assert.NotNull(parsed["status"]);
         }
@@ -33,8 +31,7 @@ public class DumpCommandTests
     [Fact]
     public void DumpDeserializesUnversionedPropertiesUsingTheFixtureMappings()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context();
 
         var code = DumpCommand.Execute(context, new DumpOptions(
             Paths: ["CUE4ParseFixtures/Content/Fixtures/Properties/DA_AllProperties.uasset"],
@@ -49,24 +46,22 @@ public class DumpCommandTests
     [Fact]
     public void DumpFiltersExportsByClassName()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, sw) = FixtureSupport.Context();
 
         DumpCommand.Execute(context, new DumpOptions(
             Paths: [],
             Criteria: new MatchCriteria(Globs: ["**/*.uasset"]),
             ExportName: null, ClassName: "Texture2D", Output: null, Indent: false, Force: true));
 
-        var lines = sw.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = FixtureSupport.Ndjson(sw);
         Assert.NotEmpty(lines);
-        Assert.All(lines, line => Assert.Equal("ok", JObject.Parse(line)["status"]?.Value<string>()));
+        Assert.All(lines, line => Assert.Equal("ok", line["status"]?.Value<string>()));
     }
 
     [Fact]
     public void DumpReturnsNotFoundForAnUnknownExplicitPath()
     {
-        var sw = new StringWriter();
-        var context = new CommandContext(FixtureSupport.Profile(), new JsonOutput(sw), Verbose: false);
+        var (context, _) = FixtureSupport.Context();
 
         var ex = Assert.Throws<CliException>(() => DumpCommand.Execute(context, new DumpOptions(
             Paths: ["Nope/Does/Not/Exist.uasset"],
@@ -84,8 +79,7 @@ public class DumpCommandTests
     [Fact]
     public void DumpReportsMissingAesKeysRatherThanNotFoundWhenArchivesAreStillEncrypted()
     {
-        var profile = FixtureSupport.EncryptedProfile() with { MainAesKey = null };
-        var context = new CommandContext(profile, new JsonOutput(new StringWriter()), Verbose: false);
+        var (context, _) = FixtureSupport.Context(FixtureSupport.EncryptedProfile() with { MainAesKey = null });
 
         var ex = Assert.Throws<CliException>(() => DumpCommand.Execute(context, new DumpOptions(
             Paths: ["CUE4ParseFixtures/Content/Fixtures/Properties/DA_AllProperties.uasset"],

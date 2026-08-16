@@ -1,18 +1,25 @@
 using CUE4Parse.Cli.Output;
+using CUE4Parse.FileProvider.Objects;
 using CUE4Parse.FileProvider.Vfs;
 
 namespace CUE4Parse.Cli.Services;
 
 public static class TargetResolver
 {
-    public static IReadOnlyList<string> Resolve(
+    /// <summary>
+    /// Resolves to <see cref="GameFile"/>s rather than paths.
+    /// <c>FileProviderDictionary.TryGetValue</c> sorts the mounted-index bag on every
+    /// lookup, and each consumer would otherwise pay for it twice per target: once for
+    /// the <c>IsUePackage</c> check and again for the load.
+    /// </summary>
+    public static IReadOnlyList<GameFile> Resolve(
         AbstractVfsFileProvider provider, string[] explicitPaths, MatchCriteria criteria, bool force)
     {
         if (explicitPaths.Length == 0)
         {
-            var matches = AssetMatcher.Filter(provider.Files.Keys, criteria);
-            AssetMatcher.EnforceLimit(matches, criteria, force);
-            return matches.Paths;
+            var matches = AssetMatcher.Filter(provider.Files, criteria);
+            AssetMatcher.EnforceLimit(matches.TotalMatched, criteria, force);
+            return matches.Files;
         }
 
         // ContainsKey beats materializing a HashSet of every mounted path.
@@ -29,8 +36,7 @@ public static class TargetResolver
                 new { missing });
         }
 
-        AssetMatcher.EnforceLimit(
-            new MatchResult(explicitPaths, explicitPaths.Length), criteria, force);
-        return explicitPaths;
+        AssetMatcher.EnforceLimit(explicitPaths.Length, criteria, force);
+        return Array.ConvertAll(explicitPaths, p => provider.Files[p]);
     }
 }

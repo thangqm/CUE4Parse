@@ -1,13 +1,6 @@
 namespace CUE4Parse.Cli.Services;
 
-public sealed record AesKeys(string MainKey, IReadOnlyDictionary<string, string> DynamicKeys);
-
-public interface IFortniteApiClient
-{
-    Task<AesKeys> GetAesKeysAsync(CancellationToken ct);
-    Task<byte[]> GetMappingsAsync(CancellationToken ct);
-}
-
+/// <summary>Where <c>cue4 update</c> writes what <c>--aes auto</c> / <c>--mappings auto</c> read back.</summary>
 public static class CachePaths
 {
     public static string Root { get; } = Path.Combine(

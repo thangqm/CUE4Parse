@@ -13,9 +13,9 @@ public class InfoCommandTests
     {
         var paks = Directory.CreateTempSubdirectory().FullName;
         var profile = new ResolvedProfile(paks, EGame.GAME_UE5_6, null, null, new Dictionary<string, string>());
-        var sw = new StringWriter();
+        var (context, sw) = FixtureSupport.Context(profile);
 
-        var code = InfoCommand.Execute(new CommandContext(profile, new JsonOutput(sw), Verbose: false));
+        var code = InfoCommand.Execute(context);
 
         Assert.Equal((int)ExitCode.Success, code);
         var parsed = JObject.Parse(sw.ToString());

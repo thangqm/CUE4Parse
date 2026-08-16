@@ -6,6 +6,7 @@ using CUE4Parse.FileProvider.Vfs;
 using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
+using CUE4Parse.Utils;
 
 namespace CUE4Parse.Cli.Services;
 
@@ -24,12 +25,7 @@ public static class ProviderFactory
         }
 
         // "auto" resolves to the cache written by 'cue4 update'.
-        var mappingsPath = profile.Mappings switch
-        {
-            null => null,
-            var m when IsAuto(m) => CachePaths.MappingsFile,
-            var m => m,
-        };
+        var mappingsPath = IsAuto(profile.Mappings) ? CachePaths.MappingsFile : profile.Mappings;
 
         if (mappingsPath is not null && !File.Exists(mappingsPath))
         {
@@ -43,8 +39,7 @@ public static class ProviderFactory
         }
 
         // Order matters: compression backends must be ready before any archive is read.
-        OodleHelper.Initialize();
-        ZlibHelper.Initialize();
+        InitializeCompression();
 
         var provider = new DefaultFileProvider(
             profile.PaksDir,
@@ -103,31 +98,46 @@ public static class ProviderFactory
         catch (Exception ex)
         {
             provider.Dispose();
-            throw new CliException(ExitCode.Mount, "MOUNT_FAILED", $"Failed to mount archives: {ex.Message}");
+
+            // Defer to the shared classifier so a failure it already recognises keeps
+            // its own exit code rather than being flattened into MOUNT_FAILED.
+            var error = ErrorClassifier.Classify(ex);
+            throw error.Code == "INTERNAL"
+                ? new CliException(ExitCode.Mount, "MOUNT_FAILED", $"Failed to mount archives: {ex.Message}")
+                : new CliException(error.ExitCode, error.Code, error.Message, error.Details);
         }
 
         return provider;
     }
 
+    /// <summary>
+    /// Both helpers fall back to downloading their native library, and both resolve a
+    /// bare filename against the <em>working directory</em> — so the default leaves a
+    /// multi-megabyte dll wherever the tool happened to be run, and re-downloads it in
+    /// the next directory. Pointing them at the cache makes that a once-per-machine cost.
+    /// Oodle keeps its null path when the statically linked native carries it, because
+    /// an explicit path bypasses that check.
+    /// </summary>
+    private static void InitializeCompression()
+    {
+        Directory.CreateDirectory(CachePaths.Root);
+
+        OodleHelper.Initialize(CUE4ParseNatives.IsFeatureAvailable("Oodle\0"u8)
+            ? null
+            : Path.Combine(CachePaths.Root, OodleHelper.OodleFileName));
+
+        ZlibHelper.Initialize(Path.Combine(CachePaths.Root, ZlibHelper.DllName));
+    }
+
     public static FAesKey ParseAesKey(string value)
     {
+        // FAesKey's own string ctor handles the hex decode and the length check.
         var hex = value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? value[2..] : value;
+        if (hex.TryParseAesKey(out var key)) return key;
 
-        if (hex.Length != 64 || !hex.All(Uri.IsHexDigit))
-        {
-            throw new CliException(
-                ExitCode.AesKey, "BAD_AES_KEY",
-                $"AES key must be 64 hex characters (32 bytes), optionally prefixed with '0x'. Got {hex.Length} characters.");
-        }
-
-        try
-        {
-            return new FAesKey(Convert.FromHexString(hex));
-        }
-        catch (FormatException ex)
-        {
-            throw new CliException(ExitCode.AesKey, "BAD_AES_KEY", $"Malformed AES key: {ex.Message}");
-        }
+        throw new CliException(
+            ExitCode.AesKey, "BAD_AES_KEY",
+            $"AES key must be 64 hex characters (32 bytes), optionally prefixed with '0x'. Got {hex.Length} characters.");
     }
 
     /// <summary>

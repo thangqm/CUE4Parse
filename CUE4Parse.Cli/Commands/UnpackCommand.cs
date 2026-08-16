@@ -19,18 +19,22 @@ public static class UnpackCommand
         var targets = TargetResolver.Resolve(provider, options.Paths, options.Criteria, options.Force);
         options.Output.Create();
 
+        // Only --flat can collide, so only --flat fills this in.
         var written = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var createdDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var failed = 0;
 
-        foreach (var path in targets)
+        foreach (var file in targets)
         {
+            var path = file.Path;
+
             try
             {
                 // A .uasset alone is unusable: the exports live in the .uexp.
                 // SavePackage returns every payload file for the package.
-                var files = provider.Files[path].IsUePackage
-                    ? provider.SavePackage(path)
-                    : new Dictionary<string, byte[]> { [path] = provider.SaveAsset(path) };
+                var files = file.IsUePackage
+                    ? provider.SavePackage(file)
+                    : new Dictionary<string, byte[]> { [path] = provider.SaveAsset(file) };
 
                 var outputs = new List<string>(files.Count);
                 var bytes = 0L;
@@ -39,7 +43,12 @@ public static class UnpackCommand
                 {
                     var destination = ResolveDestination(
                         options.Output.FullName, options.Flat, filePath, written);
-                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+                    // Assets arrive grouped by directory, so this walks the path chain
+                    // once per directory rather than once per file.
+                    var directory = Path.GetDirectoryName(destination)!;
+                    if (createdDirectories.Add(directory)) Directory.CreateDirectory(directory);
+
                     File.WriteAllBytes(destination, data);
                     outputs.Add(destination);
                     bytes += data.Length;
@@ -54,7 +63,8 @@ public static class UnpackCommand
             catch (Exception ex)
             {
                 failed++;
-                context.Output.WriteLine(new { path, status = "error", message = ex.Message });
+                var error = ErrorClassifier.Classify(ex);
+                context.Output.WriteLine(new { path, status = "error", code = error.Code, message = error.Message });
             }
         }
 
@@ -71,14 +81,16 @@ public static class UnpackCommand
     /// differ by extension (<c>.uasset</c> / <c>.uexp</c> / <c>.ubulk</c>) and never
     /// clash, and re-visiting the same source path is a no-op — a glob that matches
     /// both a package and its own <c>.uexp</c> must not be reported as a collision.
+    /// Without <c>--flat</c> the destination is an injective function of the source
+    /// path, so nothing needs recording.
     /// Public so the clash can be tested without an archive that contains one.
     /// </remarks>
     public static string ResolveDestination(
         string outputRoot, bool flat, string filePath, Dictionary<string, string> written)
     {
-        var destination = flat
-            ? Path.Combine(outputRoot, Path.GetFileName(filePath))
-            : Path.Combine(outputRoot, filePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!flat) return Path.Combine(outputRoot, filePath.Replace('/', Path.DirectorySeparatorChar));
+
+        var destination = Path.Combine(outputRoot, Path.GetFileName(filePath));
 
         if (!written.TryAdd(destination, filePath) && written[destination] != filePath)
         {

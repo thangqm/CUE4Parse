@@ -49,7 +49,7 @@ public class FortniteApiClientTests
     }
 
     [Fact]
-    public async Task GetMappingsAsyncDownloadsTheFirstListedFile()
+    public async Task DownloadMappingsAsyncStreamsTheFirstListedFileToDisk()
     {
         var payload = new byte[] { 1, 2, 3, 4 };
         var client = new FortniteApiClient(new HttpClient(new StubHandler(request =>
@@ -57,16 +57,22 @@ public class FortniteApiClientTests
                 ? Json("""{ "data": [ { "url": "https://example.invalid/m.usmap" } ] }""")
                 : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) })));
 
-        Assert.Equal(payload, await client.GetMappingsAsync(CancellationToken.None));
+        var destination = Path.Combine(Directory.CreateTempSubdirectory().FullName, "m.usmap");
+        await client.DownloadMappingsAsync(destination, CancellationToken.None);
+
+        Assert.Equal(payload, await File.ReadAllBytesAsync(destination));
     }
 
     [Fact]
-    public async Task GetMappingsAsyncThrowsWhenTheApiListsNoFiles()
+    public async Task DownloadMappingsAsyncThrowsWhenTheApiListsNoFiles()
     {
         var client = new FortniteApiClient(new HttpClient(new StubHandler(
             _ => Json("""{ "data": [] }"""))));
 
-        var ex = await Assert.ThrowsAsync<CliException>(() => client.GetMappingsAsync(CancellationToken.None));
+        var destination = Path.Combine(Directory.CreateTempSubdirectory().FullName, "m.usmap");
+        var ex = await Assert.ThrowsAsync<CliException>(
+            () => client.DownloadMappingsAsync(destination, CancellationToken.None));
+
         Assert.Equal("NO_MAPPINGS_AVAILABLE", ex.ErrorCode);
     }
 

@@ -72,24 +72,14 @@ public static class ConfigLoader
 
     public static ResolvedProfile Resolve(CliConfig config, string? profileName, ProfileOverrides overrides)
     {
-        ProfileConfig profile;
-
         var name = profileName ?? config.DefaultProfile;
-        if (name is null)
-        {
-            profile = new ProfileConfig();
-        }
-        else if (config.Profiles?.TryGetValue(name, out var found) == true)
-        {
-            profile = found;
-        }
-        else
-        {
-            var known = config.Profiles is null ? "none" : string.Join(", ", config.Profiles.Keys);
-            throw new CliException(
+
+        var profile = name is null
+            ? new ProfileConfig()
+            : config.Profiles?.GetValueOrDefault(name) ?? throw new CliException(
                 ExitCode.Config, "UNKNOWN_PROFILE",
-                $"Profile '{name}' not found. Known profiles: {known}.");
-        }
+                $"Profile '{name}' not found. Known profiles: " +
+                $"{(config.Profiles is null ? "none" : string.Join(", ", config.Profiles.Keys))}.");
 
         var paksDir = overrides.PaksDir ?? profile.PaksDir
             ?? throw new CliException(

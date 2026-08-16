@@ -3,7 +3,27 @@ using CUE4Parse.Cli.Output;
 
 namespace CUE4Parse.Cli.Services;
 
-public sealed record CommandContext(ResolvedProfile Profile, JsonOutput Output, bool Verbose);
+public sealed class CommandContext
+{
+    private readonly Lazy<ResolvedProfile> _profile;
+
+    public CommandContext(Lazy<ResolvedProfile> profile, JsonOutput output)
+    {
+        _profile = profile;
+        Output = output;
+    }
+
+    public CommandContext(ResolvedProfile profile, JsonOutput output)
+        : this(new Lazy<ResolvedProfile>(profile), output) { }
+
+    /// <summary>
+    /// Resolved on first use. <c>update</c> needs no paks directory or game version,
+    /// and must not fail for the lack of them.
+    /// </summary>
+    public ResolvedProfile Profile => _profile.Value;
+
+    public JsonOutput Output { get; }
+}
 
 /// <summary>
 /// Shared options available to every subcommand.
@@ -77,9 +97,37 @@ public static class CriteriaOptions
         Limit: pr.GetValue(Limit));
 }
 
+/// <summary>
+/// The target-selection options shared by the bulk verbs. Registered per command
+/// like <see cref="CriteriaOptions"/>, so the argument and its help text are
+/// declared once rather than once per verb.
+/// </summary>
+public static class TargetOptions
+{
+    public static readonly Argument<string[]> Paths =
+        new("paths") { Description = "Asset paths", Arity = ArgumentArity.ZeroOrMore };
+
+    public static readonly Option<bool> Force =
+        new("--force") { Description = $"Bypass the {AssetMatcher.DefaultLimit}-asset safety limit" };
+
+    public static readonly Option<DirectoryInfo> OutputDir =
+        new("--output", "-o") { Description = "Output directory", Required = true };
+
+    public static void AddTo(Command command)
+    {
+        command.Arguments.Add(Paths);
+        command.Options.Add(Force);
+    }
+
+    public static string[] ReadPaths(ParseResult pr) => pr.GetValue(Paths) ?? [];
+}
+
 public static class ContextBuilder
 {
-    public static CommandContext Build(ParseResult parseResult)
+    public static CommandContext Build(ParseResult parseResult) =>
+        new(new Lazy<ResolvedProfile>(() => ResolveProfile(parseResult)), new JsonOutput(Console.Out));
+
+    private static ResolvedProfile ResolveProfile(ParseResult parseResult)
     {
         var configPath = ConfigLoader.FindConfigFile(
             parseResult.GetValue(GlobalOptions.Config),
@@ -88,7 +136,7 @@ public static class ContextBuilder
 
         var config = configPath is null ? new CliConfig() : ConfigLoader.Load(configPath);
 
-        var profile = ConfigLoader.Resolve(
+        return ConfigLoader.Resolve(
             config,
             parseResult.GetValue(GlobalOptions.Profile),
             new ProfileOverrides(
@@ -96,10 +144,5 @@ public static class ContextBuilder
                 Game: parseResult.GetValue(GlobalOptions.Game),
                 Mappings: parseResult.GetValue(GlobalOptions.Mappings),
                 Aes: parseResult.GetValue(GlobalOptions.Aes)));
-
-        return new CommandContext(
-            profile,
-            new JsonOutput(Console.Out),
-            parseResult.GetValue(GlobalOptions.Verbose));
     }
 }

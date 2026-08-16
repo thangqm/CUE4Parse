@@ -1,9 +1,12 @@
 using CUE4Parse.Cli.Output;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace CUE4Parse.Cli.Services;
 
-public sealed class FortniteApiClient(HttpClient http) : IFortniteApiClient
+public sealed record AesKeys(string MainKey, IReadOnlyDictionary<string, string> DynamicKeys);
+
+public sealed class FortniteApiClient(HttpClient http)
 {
     private const string AesEndpoint = "https://fortnite-api.com/v2/aes";
     private const string MappingsEndpoint = "https://fortnite-api.com/v2/mappings";
@@ -24,7 +27,11 @@ public sealed class FortniteApiClient(HttpClient http) : IFortniteApiClient
         return new AesKeys(data["mainKey"]?.Value<string>() ?? string.Empty, dynamic);
     }
 
-    public async Task<byte[]> GetMappingsAsync(CancellationToken ct)
+    /// <summary>
+    /// Streams straight to disk. Fortnite's .usmap runs to tens of megabytes, which
+    /// buffering into a byte[] would park on the large object heap for no reason.
+    /// </summary>
+    public async Task DownloadMappingsAsync(string destination, CancellationToken ct)
     {
         var files = (await GetJsonAsync(MappingsEndpoint, ct))["data"] as JArray;
 
@@ -33,7 +40,7 @@ public sealed class FortniteApiClient(HttpClient http) : IFortniteApiClient
                 ExitCode.Mappings, "NO_MAPPINGS_AVAILABLE",
                 "The mappings API listed no downloadable files.");
 
-        var response = await http.GetAsync(url, ct);
+        using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!response.IsSuccessStatusCode)
         {
             throw new CliException(
@@ -41,7 +48,8 @@ public sealed class FortniteApiClient(HttpClient http) : IFortniteApiClient
                 $"Mappings download failed with HTTP {(int)response.StatusCode}.");
         }
 
-        return await response.Content.ReadAsByteArrayAsync(ct);
+        await using var file = File.Create(destination);
+        await response.Content.CopyToAsync(file, ct);
     }
 
     private async Task<JObject> GetJsonAsync(string url, CancellationToken ct)
@@ -56,13 +64,18 @@ public sealed class FortniteApiClient(HttpClient http) : IFortniteApiClient
             throw new CliException(ExitCode.Error, "API_UNAVAILABLE", $"Could not reach {url}: {ex.Message}");
         }
 
-        if (!response.IsSuccessStatusCode)
+        using (response)
         {
-            throw new CliException(
-                ExitCode.Error, "API_UNAVAILABLE",
-                $"{url} returned HTTP {(int)response.StatusCode}.");
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new CliException(
+                    ExitCode.Error, "API_UNAVAILABLE",
+                    $"{url} returned HTTP {(int)response.StatusCode}.");
+            }
 
-        return JObject.Parse(await response.Content.ReadAsStringAsync(ct));
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var reader = new JsonTextReader(new StreamReader(stream));
+            return await JObject.LoadAsync(reader, ct);
+        }
     }
 }

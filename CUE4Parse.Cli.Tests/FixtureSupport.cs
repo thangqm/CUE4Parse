@@ -1,6 +1,8 @@
 using System.Text;
+using CUE4Parse.Cli.Output;
 using CUE4Parse.Cli.Services;
 using CUE4Parse.UE4.Versions;
+using Newtonsoft.Json.Linq;
 
 namespace CUE4Parse.Cli.Tests;
 
@@ -40,4 +42,19 @@ public static class FixtureSupport
         Mappings(),
         "0x" + Convert.ToHexString(Encoding.ASCII.GetBytes(AesKeyText)),
         new Dictionary<string, string>());
+
+    /// <summary>A context writing to a capture buffer, which the caller reads back.</summary>
+    public static (CommandContext Context, StringWriter Out) Context(ResolvedProfile? profile = null)
+    {
+        var sw = new StringWriter();
+        return (new CommandContext(profile ?? Profile(), new JsonOutput(sw)), sw);
+    }
+
+    /// <summary>Parses captured NDJSON, one object per non-empty line.</summary>
+    public static JObject[] Ndjson(StringWriter sw) =>
+    [
+        .. sw.ToString()
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(JObject.Parse),
+    ];
 }

@@ -12,7 +12,9 @@ Building this project produces `cue4.exe`.
   persisted index. `cue4 dump a b c` is one mount; three separate `cue4 dump`
   calls are three. Batch your paths into a single invocation.
 - **`--aes auto` and `--mappings auto` read a local cache** written by
-  `cue4 update`. Nothing else in the tool performs network I/O.
+  `cue4 update`. The only other network I/O is CUE4Parse fetching a missing
+  compression backend (Oodle/zlib-ng) on first use; that too lands in the cache
+  directory rather than the working directory.
 - **`unpack` writes every payload file of a package.** One asset path yields
   `.uasset` *and* `.uexp` (plus `.ubulk`/`.uptnl` when present). A `.uasset` on
   its own is unopenable, because the exports live in the `.uexp`.
@@ -25,6 +27,8 @@ Building this project produces `cue4.exe`.
 - A command producing many results writes **NDJSON**: one compact JSON object
   per line.
 - Errors are a single object: `{"error":{"code":"...","message":"...","details":{...}}}`.
+- Per-asset failures inside NDJSON carry the same stable `code`, so a caller can
+  branch on `MAPPINGS_REQUIRED` without matching on message text.
 
 ## Verbs
 
@@ -75,9 +79,9 @@ cue4 dump --glob "**/*.uasset" --export MyExportName -o dump.ndjson
 ```
 
 A single explicit path with no `--glob` writes one JSON object. Anything else
-writes NDJSON of `{"path":...,"status":"ok"|"error","data":...}`, regardless of
-`-o`. In NDJSON mode a per-asset failure is reported as data and does not fail
-the process.
+writes NDJSON of `{"path":...,"status":"ok"|"error","code":...,"data":...}`,
+regardless of `-o`. In NDJSON mode a per-asset failure is reported as data and
+does not fail the process.
 
 `--class` filters exports **after** loading the package — determining a class
 requires deserializing it, which is why this lives on `dump` and not on `list`.
