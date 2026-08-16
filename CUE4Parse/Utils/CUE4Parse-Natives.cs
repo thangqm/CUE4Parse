@@ -11,7 +11,11 @@ public static unsafe class CUE4ParseNatives
     public static nint LibraryHandle { get; }
     public static bool IsInitialized => LibraryHandle != nint.Zero;
 
-    private static readonly delegate* unmanaged<byte*, bool> _isFeatureAvailableFunctionPointer;
+    // Returns byte, not bool: the native side returns a 1-byte C++ bool, while a
+    // `bool` in an unmanaged function pointer is marshalled as a 4-byte Win32 BOOL.
+    // Reading 4 bytes picks up whatever garbage sits above AL, so a native `false`
+    // reads back as `true` and every feature is reported available.
+    private static readonly delegate* unmanaged<byte*, byte> _isFeatureAvailableFunctionPointer;
 
     static CUE4ParseNatives()
     {
@@ -32,7 +36,7 @@ public static unsafe class CUE4ParseNatives
             return;
         }
 
-        _isFeatureAvailableFunctionPointer = (delegate* unmanaged<byte*, bool>)isFeatureAvailableAddress;
+        _isFeatureAvailableFunctionPointer = (delegate* unmanaged<byte*, byte>)isFeatureAvailableAddress;
         LibraryHandle = handle;
     }
 
@@ -43,7 +47,7 @@ public static unsafe class CUE4ParseNatives
 
         fixed (byte* featureNamePtr = utf8FeatureName)
         {
-            return _isFeatureAvailableFunctionPointer(featureNamePtr);
+            return _isFeatureAvailableFunctionPointer(featureNamePtr) != 0;
         }
     }
 
