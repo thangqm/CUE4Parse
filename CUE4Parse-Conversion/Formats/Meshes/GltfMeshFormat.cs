@@ -8,16 +8,21 @@ public sealed class GltfMeshFormat : IMeshExportFormat
 {
     public string DisplayName => "glTF 2.0 (binary)";
 
+    // ExporterBase.ResolveOutputPath builds the file name as
+    // {ObjectName}{NameSuffix}.{Extension}, so ObjectName + lod._suffix is exactly the
+    // file's stem. Passing it as the datablock name makes the naming rule hold with no
+    // exceptions for any --mesh-quality x --nanite combination.
+    private static string DatablockName(in MeshExportContext context, string? lodSuffix)
+        => context.ObjectName + lodSuffix;
+
     public IReadOnlyList<ExportFile> BuildSkeletalMesh(in MeshExportContext context, SkeletalMeshDto dto)
     {
-        var objectName = context.ObjectName;
-        var exportMorphTargets = context.Options.ExportMorphTargets;
         var results = new List<ExportFile>();
 
         foreach (var lod in dto.LODs)
         {
             using var ar = new FArchiveWriter();
-            new Gltf(objectName, lod, exportMorphTargets).Save(ar);
+            new Gltf(DatablockName(context, lod._suffix), lod, context).Save(ar);
 
             results.Add(new ExportFile("glb", ar.GetBuffer(), lod._suffix));
         }
@@ -27,13 +32,12 @@ public sealed class GltfMeshFormat : IMeshExportFormat
 
     public IReadOnlyList<ExportFile> BuildStaticMesh(in MeshExportContext context, StaticMeshDto dto)
     {
-        var objectName = context.ObjectName;
         var results = new List<ExportFile>();
 
         foreach (var lod in dto.LODs)
         {
             using var ar = new FArchiveWriter();
-            new Gltf(objectName, lod).Save(ar);
+            new Gltf(DatablockName(context, lod._suffix), lod, context).Save(ar);
 
             results.Add(new ExportFile("glb", ar.GetBuffer(), lod._suffix));
         }

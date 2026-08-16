@@ -4,8 +4,10 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json.Nodes;
 using CUE4Parse_Conversion.Dto;
+using CUE4Parse_Conversion.Formats.Meshes;
 using CUE4Parse_Conversion.Options;
 using CUE4Parse.UE4.Assets.Exports.Animation;
+using CUE4Parse.UE4.Assets.Exports.Material;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Writers;
 using CUE4Parse.Utils;
@@ -26,31 +28,41 @@ public class Gltf
 
     public readonly ModelRoot Model;
 
-    public Gltf(string name, MeshLodDto<MeshVertex> lod)
+    private readonly MeshExportContext _context;
+    private readonly Dictionary<UMaterialInterface, CMaterialParams2> _paramCache = new();
+
+    public Gltf(string name, MeshLodDto<MeshVertex> lod, in MeshExportContext context)
     {
+        _context = context;
+
         var sceneBuilder = new SceneBuilder(name);
-        var meshBuilder = new MeshBuilder<VERTEX, VertexColorXTextureX, VertexEmpty>($"LOD{lod.SourceLodIndex}");
+        // The datablock name is the file name without its extension, with no
+        // exceptions: a bpy script importing many .glb into one scene needs a name it
+        // can derive from the file it just opened. "LOD0" collides on the second import.
+        var meshBuilder = new MeshBuilder<VERTEX, VertexColorXTextureX, VertexEmpty>(name);
 
         ExportMeshSections(meshBuilder, lod);
-        sceneBuilder.AddRigidMesh(meshBuilder, Matrix4x4.CreateTranslation(0, 0, 0));
+        sceneBuilder.AddRigidMesh(meshBuilder, new NodeBuilder(name));
 
         Model = sceneBuilder.ToGltf2();
     }
 
-    public Gltf(string name, MeshLodDto<SkinnedMeshVertex> lod, bool exportMorphTargets)
+    public Gltf(string name, MeshLodDto<SkinnedMeshVertex> lod, in MeshExportContext context)
     {
         if (lod.Owner is not SkeletalMeshDto mesh)
             throw new ArgumentException("LOD owner must be a SkeletalMeshDto for skeletal meshes.", nameof(lod));
 
+        _context = context;
+
         var sceneBuilder = new SceneBuilder(name);
-        var armatureRoot = new NodeBuilder($"{name}.ao_LOD{lod.SourceLodIndex}");
+        var armatureRoot = new NodeBuilder($"{name}.ao");
         var armature = CreateGltfSkeleton(mesh.Bones, armatureRoot);
 
-        var meshBuilder = new MeshBuilder<VERTEX, VertexColorXTextureX, VertexJoints4>($"LOD{lod.SourceLodIndex}");
+        var meshBuilder = new MeshBuilder<VERTEX, VertexColorXTextureX, VertexJoints4>(name);
         ExportMeshSections(meshBuilder, lod);
         sceneBuilder.AddSkinnedMesh(meshBuilder, Matrix4x4.CreateTranslation(0, 0, 0), armature);
 
-        if (exportMorphTargets && mesh.MorphTargets is { Length: > 0 } morphTargets)
+        if (context.Options.ExportMorphTargets && mesh.MorphTargets is { Length: > 0 } morphTargets)
         {
             var targetNames = "{\"targetNames\": [";
             for (var j = 0; j < morphTargets.Length; j++)
@@ -96,7 +108,36 @@ public class Gltf
 
     public void Save(FArchiveWriter Ar)
     {
-        Ar.Write(Model.WriteGLB());
+        // SatelliteFile plus a callback that just returns the URI writes the reference
+        // and nothing else: no image bytes in the GLB, no satellite file on disk. The
+        // texture files are written by TextureExporter, in this same session.
+        var settings = new WriteSettings
+        {
+            ImageWriting = ResourceWriteMode.SatelliteFile,
+            ImageWriteCallback = (_, assetName, _) => assetName,
+            MergeBuffers = true,
+        };
+
+        Ar.Write(Model.WriteGLB(settings).ToArray());
+    }
+
+    /// <summary>
+    /// Resolves material parameters at the session's <c>MaterialDepth</c> — the same depth
+    /// <c>MaterialExporter</c> uses, which is what makes the URIs this writer emits and the
+    /// files that session writes the same set by construction.
+    /// <para>
+    /// Cached because a mesh with eight sections sharing one material would otherwise
+    /// walk the material graph eight times.
+    /// </para>
+    /// </summary>
+    private CMaterialParams2 ResolveParams(UMaterialInterface material)
+    {
+        if (_paramCache.TryGetValue(material, out var cached)) return cached;
+
+        var parameters = new CMaterialParams2();
+        material.GetParams(parameters, _context.Options.MaterialDepth);
+        _paramCache[material] = parameters;
+        return parameters;
     }
 
     public static NodeBuilder[] CreateGltfSkeleton(IReadOnlyList<MeshBoneDto> bones, NodeBuilder armatureNode)
@@ -155,8 +196,14 @@ public class Gltf
         for (var i = 0; i < lod.Sections.Length; i++)
         {
             var section = lod.Sections[i];
-            var mat = new MaterialBuilder().WithBaseColor(Vector4.One);
-            mat.Name = lod.Owner.GetMaterial(section)?.SlotName ?? $"MaterialSlot_{i}";
+            var slot = lod.Owner.GetMaterial(section);
+            var slotName = slot?.SlotName ?? $"MaterialSlot_{i}";
+
+            // --no-materials disables the binder implicitly: with no materials exported
+            // there is nothing on disk for a URI to point at.
+            var mat = _context.Options.ExportMaterials && slot?.Material?.TryLoad<UMaterialInterface>(out var material) == true
+                ? GltfMaterialBinder.Bind(material, ResolveParams(material), slotName, _context.Options, _context.SaveDirectory)
+                : new MaterialBuilder(slotName).WithBaseColor(Vector4.One);
 
             var prim = builder.UsePrimitive(mat);
             for (var j = 0; j < section.NumFaces; j++)
