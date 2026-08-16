@@ -7,14 +7,18 @@ public sealed class CommandContext
 {
     private readonly Lazy<ResolvedProfile> _profile;
 
-    public CommandContext(Lazy<ResolvedProfile> profile, JsonOutput output)
+    public CommandContext(Lazy<ResolvedProfile> profile, JsonOutput output, bool verbose = false)
     {
         _profile = profile;
         Output = output;
+        Verbose = verbose;
     }
 
-    public CommandContext(ResolvedProfile profile, JsonOutput output)
-        : this(new Lazy<ResolvedProfile>(profile), output) { }
+    public CommandContext(ResolvedProfile profile, JsonOutput output, bool verbose = false)
+        : this(new Lazy<ResolvedProfile>(profile), output, verbose) { }
+
+    /// <summary>Whether --verbose was passed. Only <c>info</c> varies its output on it.</summary>
+    public bool Verbose { get; }
 
     /// <summary>
     /// Resolved on first use. <c>update</c> needs no paks directory or game version,
@@ -125,7 +129,9 @@ public static class TargetOptions
 public static class ContextBuilder
 {
     public static CommandContext Build(ParseResult parseResult) =>
-        new(new Lazy<ResolvedProfile>(() => ResolveProfile(parseResult)), new JsonOutput(Console.Out));
+        new(new Lazy<ResolvedProfile>(() => ResolveProfile(parseResult)),
+            new JsonOutput(Console.Out),
+            parseResult.GetValue(GlobalOptions.Verbose));
 
     private static ResolvedProfile ResolveProfile(ParseResult parseResult)
     {
