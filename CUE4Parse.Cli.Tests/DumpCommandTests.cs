@@ -58,10 +58,16 @@ public class DumpCommandTests
         Assert.All(lines, line => Assert.Equal("ok", line["status"]?.Value<string>()));
     }
 
+    /// <summary>
+    /// Pinned to the legacy container, which has no encrypted archive. Under the default
+    /// profile an unmounted OodleEncrypted sibling is present, so the CLI answers
+    /// "may be behind an unsubmitted key" (exit 5) rather than "not found" (exit 7) —
+    /// correctly, since it genuinely cannot tell. This test is about the unambiguous case.
+    /// </summary>
     [Fact]
     public void DumpReturnsNotFoundForAnUnknownExplicitPath()
     {
-        var (context, _) = FixtureSupport.Context();
+        var (context, _) = FixtureSupport.Context(FixtureSupport.LegacyProfile());
 
         var ex = Assert.Throws<CliException>(() => DumpCommand.Execute(context, new DumpOptions(
             Paths: ["Nope/Does/Not/Exist.uasset"],

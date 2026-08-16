@@ -27,12 +27,17 @@ public class UnpackCommandTests
     /// <summary>
     /// A .uasset without its .uexp is unopenable. SaveAsset returns only the one
     /// file; SavePackage returns every payload file for the package.
+    /// <para>
+    /// Pinned to the legacy container on purpose: only there does a cooked package
+    /// exist as a separate .uasset + .uexp pair. An IoStore package keeps its payload
+    /// inside the .ucas, so there is no sibling file for this assertion to find.
+    /// </para>
     /// </summary>
     [Fact]
     public void UnpackWritesTheUexpPayloadAlongsideTheUasset()
     {
         var outDir = Directory.CreateTempSubdirectory();
-        var (context, _) = FixtureSupport.Context();
+        var (context, _) = FixtureSupport.Context(FixtureSupport.LegacyProfile());
 
         UnpackCommand.Execute(context, new UnpackOptions(
             Paths: ["CUE4ParseFixtures/Content/Fixtures/Properties/DA_AllProperties.uasset"],

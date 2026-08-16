@@ -161,7 +161,13 @@ public sealed class ExportSession(Action<StreamingLevelFilterArgs, CancellationT
         var fullPath = Path.Combine(BaseDirectory.FullName, savePath) + nameSuffix + '.' + ext.ToLower();
         var dir = Path.GetDirectoryName(fullPath) ?? throw new InvalidOperationException($"Cannot determine directory for path: {fullPath}");
         Directory.CreateDirectory(dir);
-        return fullPath.Replace('/', '\\');
+
+        // savePath always uses '/', BaseDirectory uses the platform separator, so
+        // Path.Combine yields a mixed string on Windows. Normalise to the platform
+        // separator rather than hard-coding '\\': on Linux '\' is a legal file name
+        // character, and the hard-coded version silently produced one giant file name
+        // in the working directory while the real tree was created empty beside it.
+        return fullPath.Replace('/', Path.DirectorySeparatorChar);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
