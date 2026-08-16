@@ -17,6 +17,10 @@ public static partial class BCDecoder
         return (byte) ((zval * 127) + 128);
     }
 
+    // Test-only windows onto the two private colour-block readers. See BCDecoderProbe.
+    internal static void ReadColorsBC1Internal(uint data, Span<uint> op) => ReadColorsBC1(data, op);
+    internal static void ReadColorsBC3Internal(uint data, Span<uint> op) => ReadColorsBC3(data, op);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     private static void ReadColorsBC1(uint data, Span<uint> op)
     {
@@ -144,5 +148,90 @@ public static partial class BCDecoder
         block[13] = (byte) (cl >> (int) (((bits >> 15) & 7) << 3));
         block[14] = (byte) (cl >> (int) (((bits >> 18) & 7) << 3));
         block[15] = (byte) (cl >> (int) (((bits >> 21) & 7) << 3));
+    }
+}
+
+/// <summary>
+/// Test-only window onto the two private colour-block readers. The exhaustive
+/// endpoint tests are the only thing standing between this file and a silent
+/// half-LSB shift across every DXT texture the tool has ever written, so they
+/// need to see the interpolants directly rather than through a whole image decode.
+/// </summary>
+public static class BCDecoderProbe
+{
+    private delegate void ColorReader(uint data, Span<uint> op);
+
+    /// <summary>
+    /// The two interpolated colours of a BC1 block whose endpoints carry
+    /// <paramref name="e0"/> and <paramref name="e1"/> in both the red and blue
+    /// 5-bit fields, as (2:1, 1:2) in the caller's endpoint order.
+    /// </summary>
+    public static (byte Two, byte One) Bc1RedInterpolants(int e0, int e1)
+        => Ordered(BCDecoder.ReadColorsBC1Internal, RedBlue(e0), RedBlue(e1), 0);
+
+    /// <summary>Same block, read out of the blue byte instead of the red one.</summary>
+    public static (byte Two, byte One) Bc1BlueInterpolants(int e0, int e1)
+        => Ordered(BCDecoder.ReadColorsBC1Internal, RedBlue(e0), RedBlue(e1), 2);
+
+    public static (byte Two, byte One) Bc1GreenInterpolants(int e0, int e1)
+        => Ordered(BCDecoder.ReadColorsBC1Internal, Green(e0), Green(e1), 1);
+
+    /// <summary>
+    /// BC3 has no punchthrough branch — it always interpolates — so it needs no
+    /// endpoint reordering and is defined for equal endpoints too.
+    /// </summary>
+    public static (byte Two, byte One) Bc3RedInterpolants(int e0, int e1)
+        => Channel(Read(BCDecoder.ReadColorsBC3Internal, Pack(RedBlue(e0), RedBlue(e1))), 0);
+
+    /// <summary>
+    /// The other BC1 branch, reached when the first endpoint word is not the larger:
+    /// slot 2 is a midpoint and slot 3 is transparent black rather than a second
+    /// interpolant. Returned as (slot2, slot3) in the raw BGRA words.
+    /// </summary>
+    public static (uint Midpoint, uint Fourth) Bc1PunchthroughSlots(int e0, int e1)
+    {
+        var colors = Read(BCDecoder.ReadColorsBC1Internal, Pack(RedBlue(e0), RedBlue(e1)));
+        return (colors[2], colors[3]);
+    }
+
+    // 5:6:5, so red occupies bits 11-15, green bits 5-10 and blue bits 0-4. Driving
+    // red and blue from the same value covers both 5-bit channels in one pass; green
+    // has to be driven separately because it is 6 bits wide and, unlike the other two,
+    // is kept pre-shifted by 8 inside the decoder.
+    private static int RedBlue(int e) => (e << 11) | e;
+    private static int Green(int e) => e << 5;
+
+    /// <summary>
+    /// BC1 only runs the interpolating branch when the first endpoint word is strictly
+    /// the larger, so the pair is fed in descending order and the result swapped back.
+    /// That is exact rather than approximate: with (2a+b)/3 and (a+2b)/3, exchanging
+    /// a and b exchanges the two interpolants. Equal endpoints have no interpolating
+    /// form at all — they take the punchthrough branch — so callers must exclude them.
+    /// </summary>
+    private static (byte Two, byte One) Ordered(ColorReader reader, int c0, int c1, int shiftIndex)
+    {
+        if (c0 == c1)
+            throw new ArgumentException("BC1 does not interpolate equal endpoints; see Bc1PunchthroughSlots.");
+
+        var swap = c1 > c0;
+        if (swap) (c0, c1) = (c1, c0);
+
+        var (two, one) = Channel(Read(reader, Pack(c0, c1)), shiftIndex);
+        return swap ? (one, two) : (two, one);
+    }
+
+    private static uint Pack(int c0, int c1) => (uint) c0 | ((uint) c1 << 16);
+
+    private static uint[] Read(ColorReader reader, uint data)
+    {
+        var colors = new uint[4];
+        reader(data, colors);
+        return colors;
+    }
+
+    private static (byte, byte) Channel(uint[] colors, int shiftIndex)
+    {
+        var shift = shiftIndex * 8;
+        return ((byte) (colors[2] >> shift), (byte) (colors[3] >> shift));
     }
 }
