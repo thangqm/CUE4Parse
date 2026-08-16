@@ -62,14 +62,21 @@ public sealed class TextureExporter(UTexture texture) : ExporterBase(texture)
                 return;
             }
 
-            var mipSuffix = all ? $"_MIP{index}" : null;
             var layered = texture is UTexture2DArray;
             for (var i = 0; i < decoded.Length; i++)
             {
                 if (decoded[i] is not { } slice) continue;
 
                 var data = slice.Encode(Session.Options, out var ext);
-                files.Add(new ExportFile(ext, data, layered ? $"{mipSuffix}_LAYER{i}" : mipSuffix));
+
+                // The single-mip suffix comes from the shared namer so the glTF binder
+                // and this writer cannot drift apart. The all-mips branch stays local
+                // because it walks every mip, not just the first, and the namer only
+                // ever describes the first.
+                var suffix = all
+                    ? (layered ? $"_MIP{index}_LAYER{i}" : $"_MIP{index}")
+                    : TextureFileNamer.Suffix(texture, Session.Options, i);
+                files.Add(new ExportFile(ext, data, suffix));
             }
         }
     }

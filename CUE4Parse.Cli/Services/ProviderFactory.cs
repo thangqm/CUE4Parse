@@ -7,6 +7,7 @@ using CUE4Parse.MappingsProvider.Usmap;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.Utils;
+using CUE4Parse_Conversion.Textures.BC;
 
 namespace CUE4Parse.Cli.Services;
 
@@ -127,6 +128,26 @@ public static class ProviderFactory
             : Path.Combine(CachePaths.Root, OodleHelper.OodleFileName));
 
         ZlibHelper.Initialize(Path.Combine(CachePaths.Root, ZlibHelper.DllName));
+
+        // Detex is the third of these and was simply missing. On Windows, TextureDecoder
+        // routes BC7, BC6H and the ETC family through it; uninitialized, every one of
+        // those throws "Detex decompression failed: not initialized" and the texture is
+        // lost. BC7 is the default compression for UE5 base colour maps, so this was not
+        // an edge case. Windows-only, mirroring TextureDecoder's own IsWindows branch:
+        // every other platform uses the managed AssetRipper decoders instead, and the
+        // embedded payload is a Windows DLL.
+        if (OperatingSystem.IsWindows())
+        {
+            var detexPath = Path.Combine(CachePaths.Root, DetexHelper.DLL_NAME);
+            if (DetexHelper.LoadDll(detexPath))
+            {
+                DetexHelper.Initialize(detexPath);
+            }
+            else
+            {
+                Serilog.Log.Warning("Detex could not be loaded; BC7, BC6H and ETC textures will fail to decode");
+            }
+        }
     }
 
     public static FAesKey ParseAesKey(string value)

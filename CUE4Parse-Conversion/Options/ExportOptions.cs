@@ -26,7 +26,11 @@ public class ExportOptions(
     public readonly ETexturePlatform TexturePlatform = texturePlatform;
     public readonly ETextureFormat TextureFormat = meshFormat == EMeshFormat.USD ? ETextureFormat.Png : textureFormat; // USD pipeline requires PNG textures
     public readonly int TextureQuality = Math.Clamp(textureQuality, 1, 100);
-    public readonly bool ExportHdrTexturesAsHdr = exportHdrTexturesAsHdr;
+    // glTF 2.0 core accepts only image/png and image/jpeg. Radiance HDR has no
+    // extension at all, so an .hdr URI would produce a file no glTF reader can load.
+    // Unlike --texture-format, the user did not ask for this, and the conflict only
+    // surfaces per texture — so downgrade rather than fail the whole command.
+    public readonly bool ExportHdrTexturesAsHdr = meshFormat != EMeshFormat.Gltf2 && exportHdrTexturesAsHdr;
     public readonly bool ExportAllTextureMips = exportAllTextureMips;
 
     public readonly EMaterialDepth MaterialDepth = materialDepth;

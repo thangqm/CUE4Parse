@@ -66,17 +66,34 @@ public static class ExportOptionsMapper
         ["none"] = ESocketFormat.None,
     };
 
-    public static ExportOptions Map(ExportFlags flags) => new(
-        meshFormat: Pick(flags.MeshFormat, "--mesh-format", MeshFormats),
-        naniteMeshFormat: Pick(flags.Nanite, "--nanite", NaniteFormats),
-        meshQuality: Pick(flags.MeshQuality, "--mesh-quality", MeshQualities),
-        textureFormat: Pick(flags.TextureFormat, "--texture-format", TextureFormats),
-        texturePlatform: Pick(flags.TexturePlatform, "--texture-platform", TexturePlatforms),
-        textureQuality: flags.TextureQuality,
-        exportAllTextureMips: flags.AllMips,
-        materialDepth: Pick(flags.MaterialDepth, "--material-depth", MaterialDepths),
-        exportMaterials: !flags.NoMaterials,
-        socketFormat: Pick(flags.SocketFormat, "--socket-format", SocketFormats));
+    public static ExportOptions Map(ExportFlags flags)
+    {
+        var meshFormat = Pick(flags.MeshFormat, "--mesh-format", MeshFormats);
+        var textureFormat = Pick(flags.TextureFormat, "--texture-format", TextureFormats);
+
+        // glTF 2.0 core carries only PNG and JPEG. TGA and WebP have no core support
+        // (WebP needs EXT_texture_webp, TGA nothing at all). The user typed the flag,
+        // so quietly handing them something else would be dishonest.
+        if (meshFormat == EMeshFormat.Gltf2 && textureFormat is ETextureFormat.Tga or ETextureFormat.Webp)
+        {
+            throw new CliException(
+                ExitCode.Usage, "BAD_OPTION",
+                $"--texture-format {flags.TextureFormat} cannot be used with --mesh-format gltf2. " +
+                "glTF 2.0 accepts only png and jpeg.");
+        }
+
+        return new ExportOptions(
+            meshFormat: meshFormat,
+            naniteMeshFormat: Pick(flags.Nanite, "--nanite", NaniteFormats),
+            meshQuality: Pick(flags.MeshQuality, "--mesh-quality", MeshQualities),
+            textureFormat: textureFormat,
+            texturePlatform: Pick(flags.TexturePlatform, "--texture-platform", TexturePlatforms),
+            textureQuality: flags.TextureQuality,
+            exportAllTextureMips: flags.AllMips,
+            materialDepth: Pick(flags.MaterialDepth, "--material-depth", MaterialDepths),
+            exportMaterials: !flags.NoMaterials,
+            socketFormat: Pick(flags.SocketFormat, "--socket-format", SocketFormats));
+    }
 
     private static T Pick<T>(string value, string flagName, Dictionary<string, T> map)
         => map.TryGetValue(value.ToLowerInvariant(), out var result)

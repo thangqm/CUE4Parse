@@ -74,4 +74,17 @@ public class ExportOptionsMapperTests
         Assert.Equal(ExitCode.Usage, ex.ExitCode);
         Assert.Equal("BAD_OPTION", ex.ErrorCode);
     }
+
+    [Theory]
+    [InlineData("tga")]
+    [InlineData("webp")]
+    public void Gltf2RejectsTextureFormatsGltfCannotCarry(string textureFormat)
+    {
+        var flags = ExportFlagDefaults.Gltf2() with { TextureFormat = textureFormat };
+
+        var ex = Assert.Throws<CliException>(() => ExportOptionsMapper.Map(flags));
+
+        Assert.Equal(ExitCode.Usage, ex.ExitCode);
+        Assert.Equal("BAD_OPTION", ex.ErrorCode);
+    }
 }
