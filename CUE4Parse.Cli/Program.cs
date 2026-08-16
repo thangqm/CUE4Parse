@@ -86,6 +86,8 @@ var noHdrOpt = new Option<bool>("--no-hdr")
     { Description = "Write HDR sources in the raster format instead of .hdr (no effect with --mesh-format gltf2)" };
 var flipNormalYOpt = new Option<bool>("--flip-normal-y")
     { Description = "Invert the green channel of TC_Normalmap textures" };
+var manifestOpt = new Option<FileInfo?>("--manifest")
+    { Description = "Write a sorted, hashed manifest of everything exported" };
 
 compressionFormatOpt.AcceptOnlyFromAmong([.. ExportOptionsMapper.CompressionFormats.Keys]);
 var parallelOpt = new Option<int>("--parallel")
@@ -109,6 +111,7 @@ foreach (var option in new Option[]
     TargetOptions.OutputDir, meshFormatOpt, textureFormatOpt, texturePlatformOpt, meshQualityOpt,
     naniteOpt, socketFormatOpt, materialDepthOpt, textureQualityOpt, noMaterialsOpt,
     allMipsOpt, parallelOpt, compressionFormatOpt, noMorphTargetsOpt, noHdrOpt, flipNormalYOpt,
+    manifestOpt,
 })
 {
     exportCmd.Options.Add(option);
@@ -135,7 +138,8 @@ exportCmd.SetAction((pr, ct) => RunAsync(pr, ctx => ExportCommand.ExecuteAsync(c
             NoHdr: pr.GetValue(noHdrOpt),
             FlipNormalY: pr.GetValue(flipNormalYOpt)),
         Parallel: pr.GetValue(parallelOpt),
-        Force: pr.GetValue(TargetOptions.Force)),
+        Force: pr.GetValue(TargetOptions.Force),
+        Manifest: pr.GetValue(manifestOpt)),
     ct)));
 root.Subcommands.Add(exportCmd);
 

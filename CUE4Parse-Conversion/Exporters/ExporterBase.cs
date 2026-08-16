@@ -80,12 +80,12 @@ public abstract class ExporterBase : IExporter
 
             var tasks = files.Select(file => WriteExportFileAsync(file, ct));
             var paths = await Task.WhenAll(tasks).ConfigureAwait(false);
-            return new ExportResult(true, ObjectPath, paths);
+            return new ExportResult(true, ObjectPath, ClassName, paths);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Log.Error(ex, "Failed to export");
-            return ExportResult.Failure(ObjectPath, ex);
+            return ExportResult.Failure(ObjectPath, ClassName, ex);
         }
     }
 

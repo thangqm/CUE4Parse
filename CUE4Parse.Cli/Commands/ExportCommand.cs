@@ -27,7 +27,8 @@ public sealed record ExportCommandOptions(
     DirectoryInfo Output,
     ExportFlags Flags,
     int Parallel,
-    bool Force);
+    bool Force,
+    FileInfo? Manifest = null);
 
 public static class ExportCommand
 {
@@ -103,6 +104,14 @@ public static class ExportCommand
                 files = result.DiskFilePaths,
                 message = result.Error?.Message,
             });
+        }
+
+        if (options.Manifest is { } manifestFile)
+        {
+            var version = typeof(ExportCommand).Assembly.GetName().Version?.ToString() ?? "0.0.0";
+            ExportManifest.Write(
+                ExportManifest.Build(results, options.Output.FullName, exportOptions, $"cue4 {version}"),
+                manifestFile);
         }
 
         // Exit 8 means something failed. "No exporter for a DataTable" is not a
