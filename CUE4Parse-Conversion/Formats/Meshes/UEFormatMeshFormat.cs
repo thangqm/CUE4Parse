@@ -12,16 +12,22 @@ public sealed class UEFormatMeshFormat(bool bNaniteSeparate = false) : IMeshExpo
 {
     public string DisplayName => "UEFormat (uemodel)";
 
-    public IReadOnlyList<ExportFile> BuildSkeletalMesh(string objectName, string objectPath, ExportOptions options, SkeletalMeshDto dto, IReadOnlyDictionary<string, string>? materialPaths = null)
-        => Build(dto.LODs, predicate => new UEModel(objectName, objectPath, dto, options, predicate));
+    public IReadOnlyList<ExportFile> BuildSkeletalMesh(in MeshExportContext context, SkeletalMeshDto dto)
+    {
+        var (objectName, objectPath, options) = (context.ObjectName, context.ObjectPath, context.Options);
+        return Build(dto.LODs, predicate => new UEModel(objectName, objectPath, dto, options, predicate));
+    }
 
-    public IReadOnlyList<ExportFile> BuildStaticMesh(string objectName, string objectPath, ExportOptions options, StaticMeshDto dto, IReadOnlyDictionary<string, string>? materialPaths = null)
-        => Build(dto.LODs, predicate => new UEModel(objectName, objectPath, dto, options, predicate));
+    public IReadOnlyList<ExportFile> BuildStaticMesh(in MeshExportContext context, StaticMeshDto dto)
+    {
+        var (objectName, objectPath, options) = (context.ObjectName, context.ObjectPath, context.Options);
+        return Build(dto.LODs, predicate => new UEModel(objectName, objectPath, dto, options, predicate));
+    }
 
-    public IReadOnlyList<ExportFile> BuildSkeleton(string objectName, string objectPath, ExportOptions options, SkeletonDto dto)
+    public IReadOnlyList<ExportFile> BuildSkeleton(in MeshExportContext context, SkeletonDto dto)
     {
         using var ar = new FArchiveWriter();
-        new UEModel(objectName, objectPath, dto, options).Save(ar);
+        new UEModel(context.ObjectName, context.ObjectPath, dto, context.Options).Save(ar);
         return [new ExportFile("uemodel", ar.GetBuffer())];
     }
 

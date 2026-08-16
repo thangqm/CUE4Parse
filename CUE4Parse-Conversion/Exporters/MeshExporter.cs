@@ -10,6 +10,15 @@ public abstract class MeshExporter<T>(T mesh) : ExporterBase(mesh) where T : UOb
 {
     protected abstract IReadOnlyList<ExportFile> BuildFiles(T original, IMeshExportFormat format);
 
+    /// <summary>
+    /// The bundle every mesh writer receives. <c>SaveDirectory</c> is included because a
+    /// writer that emits references to sibling files (glTF image URIs) must resolve them
+    /// from the exporter's own directory, and re-deriving that from <c>ObjectPath</c>
+    /// would be a second implementation of <see cref="ExporterBase"/>'s path rules.
+    /// </summary>
+    protected MeshExportContext CreateContext(IReadOnlyDictionary<string, string>? materialPaths = null)
+        => new(ObjectName, ObjectPath, SaveDirectory, Session.Options, materialPaths);
+
     protected override IReadOnlyList<ExportFile> BuildExportFiles(CancellationToken ct = default)
     {
         Log.Debug("Converting mesh to {Format} at {Quality} quality ({NaniteFormat})", Session.Options.MeshFormat, Session.Options.MeshQuality, Session.Options.NaniteMeshFormat);

@@ -16,8 +16,10 @@ public class UsdMeshFormat : IMeshExportFormat
 {
     public string DisplayName => "USD Mesh (.usda)";
 
-    public IReadOnlyList<ExportFile> BuildSkeletalMesh(string objectName, string objectPath, ExportOptions options, SkeletalMeshDto dto, IReadOnlyDictionary<string, string>? materialPaths = null)
+    public IReadOnlyList<ExportFile> BuildSkeletalMesh(in MeshExportContext context, SkeletalMeshDto dto)
     {
+        var options = context.Options;
+        var materialPaths = context.MaterialPaths;
         var results = new List<ExportFile>();
         var root = dto.ToSkelRoot();
 
@@ -46,8 +48,10 @@ public class UsdMeshFormat : IMeshExportFormat
         return results;
     }
 
-    public IReadOnlyList<ExportFile> BuildStaticMesh(string objectName, string objectPath, ExportOptions options, StaticMeshDto dto, IReadOnlyDictionary<string, string>? materialPaths = null)
+    public IReadOnlyList<ExportFile> BuildStaticMesh(in MeshExportContext context, StaticMeshDto dto)
     {
+        var options = context.Options;
+        var materialPaths = context.MaterialPaths;
         var results = new List<ExportFile>();
 
         var sockets = CreateSockets(dto.Sockets, options.SocketFormat);
@@ -68,8 +72,9 @@ public class UsdMeshFormat : IMeshExportFormat
         return results;
     }
 
-    public IReadOnlyList<ExportFile> BuildSkeleton(string objectName, string objectPath, ExportOptions options, SkeletonDto dto)
+    public IReadOnlyList<ExportFile> BuildSkeleton(in MeshExportContext context, SkeletonDto dto)
     {
+        var options = context.Options;
         var root = dto.ToSkelRoot();
 
         var sockets = options.SocketFormat != ESocketFormat.None ? CreateSockets(dto.Sockets) : null;
