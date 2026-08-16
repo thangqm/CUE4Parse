@@ -44,6 +44,39 @@ public static class GlobalOptions
     }
 }
 
+/// <summary>
+/// The matching options shared by list, dump, unpack and export.
+/// These are per-command (not Recursive) — each verb registers them via AddTo.
+/// </summary>
+public static class CriteriaOptions
+{
+    public static readonly Option<string[]> Glob =
+        new("--glob") { Description = "Glob pattern, repeatable; ** crosses separators" };
+
+    public static readonly Option<string?> Regex =
+        new("--regex") { Description = "Regex applied to the asset path" };
+
+    public static readonly Option<string?> Ext =
+        new("--ext") { Description = "Filter by file extension" };
+
+    public static readonly Option<int?> Limit =
+        new("--limit") { Description = "Take only the first N matches (implies --force)" };
+
+    public static void AddTo(Command command)
+    {
+        command.Options.Add(Glob);
+        command.Options.Add(Regex);
+        command.Options.Add(Ext);
+        command.Options.Add(Limit);
+    }
+
+    public static MatchCriteria Read(ParseResult pr) => new(
+        Globs: pr.GetValue(Glob),
+        Regex: pr.GetValue(Regex),
+        Extension: pr.GetValue(Ext),
+        Limit: pr.GetValue(Limit));
+}
+
 public static class ContextBuilder
 {
     public static CommandContext Build(ParseResult parseResult)

@@ -15,6 +15,16 @@ var infoCmd = new Command("info", "Report mount state, game version and missing 
 infoCmd.SetAction(pr => Run(pr, InfoCommand.Execute));
 root.Subcommands.Add(infoCmd);
 
+var countOpt = new Option<bool>("--count") { Description = "Print only the match count" };
+
+var listCmd = new Command("list", "Enumerate assets in the mounted VFS");
+CriteriaOptions.AddTo(listCmd);
+listCmd.Options.Add(countOpt);
+listCmd.SetAction(pr => Run(pr, ctx => ListCommand.Execute(ctx, new ListOptions(
+    CriteriaOptions.Read(pr),
+    CountOnly: pr.GetValue(countOpt)))));
+root.Subcommands.Add(listCmd);
+
 var parseResult = root.Parse(args);
 
 // System.CommandLine exits 1 on parse errors; the contract requires 2.
