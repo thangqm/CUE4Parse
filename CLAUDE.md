@@ -85,7 +85,22 @@ Serialization quirks are expressed inline as `if (Ar.Game == GAME_X) Ar.Position
 
 ### CLI
 
-`CUE4Parse.Cli` builds `cue4.exe`, the automation front end: `info`, `list`, `dump`, `unpack`, `export`, `update`. All structured output goes to stdout as JSON or NDJSON; all logging goes to stderr. `Program.cs` does argument parsing only — each verb is a plain class taking a parsed options record, so commands are testable without a parser, and `Services/ProviderFactory.cs` is the single provider bootstrap path. `CUE4Parse.Cli/publish.ps1` produces the standalone binary; it deliberately avoids trimming and NativeAOT, which break `ObjectTypeRegistry`'s static-init reflection. See [CUE4Parse.Cli/README.md](CUE4Parse.Cli/README.md).
+`CUE4Parse.Cli` builds `cue4.exe`, the automation front end: `info`, `list`, `dump`, `unpack`, `export`, `update`. All structured output goes to stdout as JSON or NDJSON; all logging goes to stderr. `Program.cs` does argument parsing only — each verb is a plain class taking a parsed options record, so commands are testable without a parser, and `Services/ProviderFactory.cs` is the single provider bootstrap path. `CUE4Parse.Cli/publish.ps1` produces the standalone binary; it deliberately avoids trimming and NativeAOT, which break `ObjectTypeRegistry`'s static-init reflection. See [CUE4Parse.Cli/README.md](CUE4Parse.Cli/README.md) and the user guide at [docs/cue4-guide.md](docs/cue4-guide.md).
+
+### Export output — the rules that are easy to break
+
+- **[docs/cue4-output-contract.md](docs/cue4-output-contract.md) is a promise, not a description.** Directory layout, file-name suffixes, glTF specifics and exit codes are committed there. Changing any of them means changing that file *first*. Its "Verification gaps" section is the honest list of what CI does not check — keep it honest.
+- **`TextureFileNamer` is the single predictor of a texture's file name.** Never hard-code `.png`: the extension depends on the format, HDR sources, `--all-mips` (which also *removes* the unsuffixed file) and `UTexture2DArray` layers. `NamerAgreesWithTheEncoderOnEveryFixtureTexture` is what keeps prediction and encoder from drifting.
+- **`GltfMaterialBinder` binds materials for glTF, and textures are *referenced*, never embedded.** Image URIs are external and relative, computed from the same classification `MaterialExporter` uses, so the referenced set and the written set are the same by construction. `OrmTextureExporter` writes the channel-swapped `_ORM` sibling glTF's metallic-roughness slot needs.
+- **`MeshExportContext` is what mesh writers receive.** Add a field there rather than another parameter to `IMeshExportFormat`.
+- **Sound assets extract, they never transcode.** `SoundExporter` writes the decoder's bytes under the decoder's format name; `USoundCue` is deliberately not dispatched.
+- `tools/parity/` holds the comparison scripts and a committed `--manifest` baseline. Compare manifests, not texture bytes — texture bytes are explicitly not stable across versions.
+
+### CI
+
+`.github/workflows/cli-tests.yml` runs `CUE4Parse.Cli.Tests` on Linux with a pinned glTF-Validator and a pinned headless Blender (`tools/gltf-validator.version`, `tools/blender.version`). **`tests.yml` is upstream's and must not be edited.**
+
+Several tests skip rather than fail when their tool or asset is absent — `GLTF_VALIDATOR`, `BLENDER`, `CUE4_REAL_PAKS`/`CUE4_REAL_GAME`/`CUE4_REAL_MESH`. A run reporting skips has left goal conditions unverified; see `RealAssets.cs` for why the redistributable fixtures cannot cover them.
 
 ## Conventions
 

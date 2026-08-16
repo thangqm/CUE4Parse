@@ -1,10 +1,68 @@
 # Báo cáo đối chiếu `cue4` CLI ↔ FModel 4.4.4
 
-**Ngày:** 2026-08-16
+**Ngày:** 2026-08-16 · **Sửa đổi lần 2:** 2026-08-16 (đóng khung lại — xem ngay dưới)
 **Mục tiêu:** xác minh `cue4 export` có thay thế được FModel trong workflow tự động hay không, và liệt kê đúng những gì cần sửa / bổ sung để bỏ hẳn FModel.
 **Phạm vi kiểm chứng:** Stellar Blade (Steam), 4 skeletal mesh mod + toàn bộ material/texture đi kèm — 54 file đối chiếu byte-for-byte, 583.517 vertex, 2.828.586 index.
 
 > Trạng thái tổng: **40/54 file trùng byte tuyệt đối; 14 file khác.** Toàn bộ khác biệt nằm ở **CUE4Parse `master`**, không phải ở nhánh CLI (`git diff master...worktree-feat-cue4-cli` chỉ chạm đúng `CUE4Parse/Utils/CUE4Parse-Natives.cs`, +7/−3). Hình học, UV, tangent, skinning, index và material JSON khớp 100%.
+
+---
+
+## 0. Đóng khung lại: FModel **không** phải một cách hiện thực độc lập {#framing}
+
+Bản đầu của báo cáo này ngầm coi FModel 4.4.4 là một "bên thứ hai" để đối chiếu, rồi
+hỏi *bên nào đúng*. **Câu hỏi đó sai ngay từ đầu.** FModel không tự viết bộ đọc UE —
+nó nhúng chính repo này làm submodule. Vậy nên:
+
+> **FModel 4.4.4 = một bản CUE4Parse cũ đã ghim.** Mọi khác biệt đo được trong báo cáo
+> này là **delta giữa hai phiên bản của cùng một repo**, không phải delta giữa hai cách
+> hiện thực.
+
+**Phiên bản đã ghim (đã tra, không đoán):**
+
+| | |
+|---|---|
+| FModel | `4.4.4.0`, commit `8b95b403bbf16f935f6e20d326a508ec4655500d` |
+| CUE4Parse submodule tại commit đó | **`d2f6ce6e618576dbbe7f6dd9ed3171f14513182a`** ("loading all virtual paths from uplugin files", **2025-12-18**) |
+
+Tra lại bất cứ lúc nào:
+
+```bash
+curl -s "https://api.github.com/repos/4sval/FModel/contents/CUE4Parse?ref=<FModel-commit>" \
+  | grep '"sha"'
+```
+
+### Hệ quả: phương pháp đúng thay cho bảng "bên nào đúng"
+
+Với mỗi dòng còn chưa giải thích được, **không** so đoán hành vi — hãy diff hai phiên bản:
+
+```bash
+git diff d2f6ce6e..HEAD -- <đường dẫn liên quan>
+```
+
+Áp dụng ngay cho các dòng còn treo:
+
+- **Texture ([D1](#d1))** — `d2f6ce6e` (2025-12-18) **có trước** `ea938ba8` (2026-08-04).
+  Kiểm chứng: `git merge-base --is-ancestor ea938ba8 d2f6ce6e` → **sai**. Nghĩa là
+  FModel 4.4.4 vẫn dùng `DXTDecoder` cũ, còn `master` đã chuyển sang `BCDecoder`.
+  **Toàn bộ chênh lệch texture chính xác là delta của commit viết lại decoder** —
+  không còn gì bí ẩn. Xem [`bc-interpolant-rounding.md`](bc-interpolant-rounding.md).
+- **`COLOR_0` ([D3](#d3))** — cùng cách làm: `git diff d2f6ce6e..HEAD --
+  CUE4Parse-Conversion/Writers/Gltf/` rồi tìm chỗ ép float→byte. Kết luận "cue4 đúng,
+  FModel sai" ở D3 vẫn giữ nguyên (dấu vết `{0,1}` là bằng chứng đủ mạnh), nhưng cách
+  phát biểu chuẩn hơn là: **bản cũ sai, bản mới đã sửa**, chứ không phải hai công cụ
+  bất đồng.
+- **Đếm archive 212 vs 167 + 7 loose, `unloadedVfs: 1` ([G8](#g8))** — nay đã có
+  `cue4 info --verbose` liệt kê từng archive, nên đối chiếu 1:1 với log FModel được.
+  Nhưng lưu ý cùng một lý do: cách *đếm* VFS cũng nằm trong khoảng diff
+  `d2f6ce6e..HEAD` của `AbstractVfsFileProvider`, nên đừng giả định hai con số phải
+  bằng nhau.
+
+### Điều này **không** làm giảm giá trị phần đo đạc
+
+Delta giữa hai phiên bản vẫn là thứ đáng biết — nó chính là cái mà người dùng chuyển
+từ FModel sang cue4 sẽ nhìn thấy. Chỉ có điều nó nên được đọc như **ghi chú nâng cấp**,
+chứ không phải như bảng điểm "ai đúng ai sai".
 
 ---
 
@@ -112,14 +170,45 @@ thay phép chia nguyên bằng fixed-point **có số hạng làm tròn**. Xem [
 - `ReadColorsBC3` (phần màu của DXT5): `((2 * r0 + r1) * 683) >> 11` — cắt xuống, trong khi bản FModel làm tròn → sinh lệch **−1**.
 - `ReadColorsBC1` (DXT1): khớp hoàn toàn, không cần đụng.
 
-> **⚠️ ĐÍNH CHÍNH (bổ sung sau khi đọc kỹ code).** Phiên bản đầu của mục này kết luận rằng chênh lệch −1 ở DXT5 là **hồi quy** của commit tối ưu decoder. **Kết luận đó sai.** `ReadColorsBC1` và `ReadColorsBC3` trong code hiện tại dùng **cùng một biểu thức** `((2*r0 + r1) * 683) >> 11` (cắt xuống). Vậy mà DXT1 khớp FModel còn DXT5 lệch −1 → **FModel mới là bên không nhất quán**: nó cắt xuống ở BC1 nhưng làm tròn ở BC3. Code hiện tại tự nhất quán giữa BC1 và BC3.
+> **⚠️ ĐÍNH CHÍNH LẦN 2 (2026-08-16) — bỏ hẳn "đính chính lần 1".**
+>
+> Đính chính lần 1 nói rằng kết luận "hồi quy" là sai, và rằng **FModel** mới là bên
+> không nhất quán (cắt xuống ở BC1 nhưng làm tròn ở BC3). **Chính đính chính đó mới
+> sai**, và nó sai vì đọc code `master` rồi suy ra hành vi của FModel — trong khi
+> FModel chạy một bản CUE4Parse **cũ hơn** (xem [§0](#framing)).
+>
+> Bằng chứng git, không phải suy luận:
+>
+> ```bash
+> git show ea938ba8^:CUE4Parse-Conversion/Textures/DXT/DXTDecoder.cs
+> #  DXT1      : (2*c0 + c1) / 3          <- cắt xuống
+> #  DXT3/DXT5 : (2*c0 + c1 + 1) / 3      <- LÀM TRÒN
+> git show ea938ba8 -- CUE4Parse-Conversion/Textures/TextureDecoder.cs
+> #  - DXTDecoder.DXT1/DXT3/DXT5  ->  + BCDecoder.BC1/BC2/BC3
+> ```
+>
+> FModel 4.4.4 ghim `d2f6ce6e` (2025-12-18) — **trước** `ea938ba8` (2026-08-04) — nên
+> nó chạy đúng `DXTDecoder` ở trên. Bộ đôi "DXT1 khớp tuyệt đối + DXT5 lệch −1" là
+> **chính xác điều mà code cũ dự đoán**, chứ không phải dấu hiệu FModel bất nhất.
+>
+> **Kết luận ban đầu đúng:** `ea938ba8` đã làm BC2/BC3 lặng lẽ đổi từ *làm tròn* sang
+> *cắt xuống*, trong một commit mà mục đích công bố chỉ là tăng tốc.
 
-Điểm không nhất quán *thật sự còn lại* trong code hiện tại là giữa **(BC1, BC3: cắt xuống)** và **(BC4, BC5: làm tròn qua số hạng `+3`/`+2`)**.
+Điểm không nhất quán trong code hiện tại là giữa **(BC1, BC2, BC3: cắt xuống)** và **(BC4, BC5: làm tròn qua số hạng `+3`/`+2`)**.
 
-**Đề xuất cho agent — không đổi công thức:**
-1. **Giữ nguyên decoder.** Sai lệch tối đa ±1/255 ở cả hai cách, không cách nào gây lỗi. Đổi BC1 sang làm tròn sẽ làm mọi texture DXT1 đã xuất trước đây đổi byte — churn thật, lợi ích không nhìn thấy.
-2. **Khoá hành vi bằng test vét cạn**: mọi tổ hợp endpoint/index cho BC1/BC3/BC4/BC5, so với số học chính xác, assert sai lệch ≤ 1. Chỉ sửa công thức nếu test lộ ra sai lệch > 1 — tức là sửa khi có bằng chứng.
-3. Ghi vào tài liệu rằng byte texture **không** ổn định giữa các phiên bản CUE4Parse, nên pipeline đừng bao giờ so hash texture giữa hai version khác nhau.
+**Phát hiện thứ hai, tìm ra khi viết test vét cạn (mục 2 bên dưới):** cùng commit đó
+còn thay `temp / 5` (chia nguyên, chính xác) bằng `(temp * 1636) >> 13`, và **đẳng thức
+này sai**: `1636 × 5 = 8180 < 8192`. Nhánh 6-giá-trị của BC4/BC5 vì thế **thấp hơn
+`floor(x/5)` đúng 1 đơn vị** ở 374/1278 giá trị — 79,7% cặp endpoint có ít nhất một
+interpolant sai. Hệ số đúng là **1639**. Nhánh `/7` (`9365 >> 16`) thì chính xác trên
+toàn dải, nên đây là nhầm lẫn chứ không phải đánh đổi tốc độ. **BC5 là format của
+normal map**, nên nó chạm đúng những file lệch nhiều nhất trong bảng đo ở trên.
+
+**Đề xuất cho agent — không đổi công thức (đã thực hiện):**
+1. **Giữ nguyên decoder.** Sửa sẽ đổi byte của mọi texture BC cho *mọi* consumer của CUE4Parse; và câu hỏi "có cố ý bỏ làm tròn ở DXT3/DXT5 không" chỉ tác giả `ea938ba8` trả lời được.
+2. **Khoá hành vi bằng test vét cạn** — đã có: [`CUE4Parse.Tests/BCDecoderTests.cs`](../../CUE4Parse.Tests/BCDecoderTests.cs), vét cạn toàn bộ không gian endpoint thật (1024 cặp đỏ, 4096 cặp lục, 1024 cặp lam, 65536 cặp alpha), ngưỡng **0** so với *hành vi hiện tại* — không phải "≤ 1" như đề xuất cũ, vì ngưỡng ≤ 1 là ngưỡng mà **cả** công thức cắt xuống lẫn công thức làm tròn đều qua, tức là một test không phân biệt được hai bên.
+3. **Báo cáo lên upstream:** [`docs/reports/bc-interpolant-rounding.md`](bc-interpolant-rounding.md) — soạn xong, **chưa gửi**.
+4. Ghi vào tài liệu rằng byte texture **không** ổn định giữa các phiên bản CUE4Parse — đã có trong [output contract](../cue4-output-contract.md) §8. Đừng bao giờ so hash texture giữa hai version; hãy so `--manifest`.
 
 ---
 
@@ -288,20 +377,30 @@ Có thể chỉ là cách đếm khác (pak và utoc tính riêng), **chưa xác
 
 ## 6. Lộ trình bỏ FModel
 
+> **Cập nhật 2026-08-16:** phần lớn lộ trình này đã hoàn thành trong kế hoạch
+> [`2026-08-16-cue4-blender-pipeline.md`](../superpowers/plans/2026-08-16-cue4-blender-pipeline.md)
+> (Phase 0–3). Trạng thái dưới đây phản ánh thực tế đã kiểm chứng, không phải dự định.
+
 **Bắt buộc trước khi bỏ:**
 
-- [ ] **G3** — build lại native có ACL và kiểm chứng animation.
-- [ ] **G2** — audio exporter (chỉ khi workflow có dùng âm thanh; nếu không, ghi rõ là "ngoài phạm vi").
-- [ ] **D2** — sửa chuẩn hoá `NORMAL`, kèm test.
-- [ ] **G1** — expose `--compression-format` (chặn cạm bẫy khi chuyển sang `ueformat`).
+- [x] **G3** — native đã build có ACL; `cue4 info` báo `library`/`acl`/`oodle` và có test khoá tính trung thực của phần báo cáo đó. **Vẫn chưa kiểm chứng giải nén ACL thật** — bộ fixture không có animation ACL nào và không thể thêm. Xem "Verification gaps" trong output contract.
+- [x] **G2** — `SoundExporter` đã có; `USoundWave`/`USoundNodeWave`/`UAkMediaAssetData` xuất ra byte thô, `USoundCue` bị bỏ qua có chủ đích. **cue4 trích xuất chứ không transcode** — `.wem`/`.binka`/`.rada`/`.opus` vẫn cần vgmstream. Không có fixture Wwise nên `.wem` chưa được CI phủ.
+- [x] **D2** — `NORMAL` đã chuẩn hoá chính xác, có test `|n| − 1 < 1e-6` và có glTF-Validator trong CI.
+- [x] **G1** — đã có `--compression-format`, `--no-morph-targets`, `--no-hdr`.
 
 **Nên có để workflow tự động ổn định:**
 
-- [ ] **G5** — `--manifest` có hash.
-- [ ] **G6** — golden-file test cho decoder + exporter.
-- [ ] **D1** — test vét cạn khoá hành vi decoder BC1/BC3/BC4/BC5 (giữ nguyên công thức, xem đính chính ở D1).
-- [ ] **G4** — `--with-raw`.
-- [ ] **G7**, **G8**, **G9** — chốt default, làm rõ mount, cập nhật tài liệu.
+- [x] **G5** — `--manifest` (đã sắp xếp, có sha256, hai lần chạy cho manifest trùng byte).
+- [x] **G6** — đã có test tự động: glTF-Validator + import Blender headless (bản ghim), test decoder vét cạn, `|NORMAL|`, tên/thứ tự joint, và URI ảnh phải trỏ tới file có thật.
+- [x] **D1** — test vét cạn đã khoá hành vi BC1/BC3/BC4/BC5, ngưỡng 0; **phát hiện thêm lỗi hệ số `1636`** (xem D1). Báo cáo upstream đã soạn, **chưa gửi**.
+- [ ] **G4** — `--with-raw`: **chưa làm.** Vẫn phải chạy `unpack` riêng, tức mount lần thứ hai.
+- [x] **G7** — default `--nanite no-nanite` được giữ, nhưng nay có **cảnh báo khi dữ liệu Nanite bị bỏ**, nên không còn im lặng.
+- [x] **G8** — `cue4 info --verbose` liệt kê từng archive. Lưu ý [§0](#framing): cách đếm VFS cũng nằm trong diff `d2f6ce6e..HEAD`, đừng giả định hai con số phải bằng nhau.
+- [x] **G9** — tài liệu đã cập nhật: [`docs/cue4-guide.md`](../cue4-guide.md) (đã đưa vào repo) + [`docs/cue4-output-contract.md`](../cue4-output-contract.md).
+
+**Còn treo, cần biết:**
+
+- CI (`.github/workflows/cli-tests.yml`) **chưa từng chạy** — `origin` vẫn trỏ thẳng upstream nên nhánh chưa có remote để đẩy. Lỗi separator đường dẫn chỉ biểu hiện **trên Linux**, nên một lần xanh trên Windows không chứng minh được gì.
 
 **Đã đạt, không cần làm gì:**
 

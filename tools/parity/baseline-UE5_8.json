@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "tool": "cue4 1.2.2.0",
+  "options": {
+    "meshFormat": "Gltf2",
+    "textureFormat": "Png",
+    "texturePlatform": "DesktopMobile",
+    "meshQuality": "Highest",
+    "nanite": "NoNanite",
+    "socketFormat": "Bone",
+    "materialDepth": "TopLayerOnly",
+    "textureQuality": 100,
+    "exportMaterials": true,
+    "allMips": false,
+    "flipNormalY": false,
+    "compressionFormat": "None",
+    "exportMorphTargets": true,
+    "exportHdrTexturesAsHdr": false
+  },
+  "entries": [
+    {
+      "objectPath": "CUE4ParseFixtures/Content/Fixtures/Meshes/SK_Fixture.SK_Fixture",
+      "class": "SkeletalMesh",
+      "status": "ok",
+      "message": null,
+      "files": [
+        {
+          "path": "CUE4ParseFixtures/Content/Fixtures/Meshes/SK_Fixture.glb",
+          "bytes": 7880,
+          "sha256": "3a21c7bc95252d59eec3cd7eb39c1947553727a9c224303b4a6931eaa2ce21df"
+        }
+      ]
+    },
+    {
+      "objectPath": "CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Fixture.SM_Fixture",
+      "class": "StaticMesh",
+      "status": "ok",
+      "message": null,
+      "files": [
+        {
+          "path": "CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Fixture.glb",
+          "bytes": 5020,
+          "sha256": "3e2aadee00dfa8a4ed8968ff0c092b44b7ed98ec1ee95bf1820e96e8a0c6ad9f"
+        }
+      ]
+    },
+    {
+      "objectPath": "CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Nanite.SM_Nanite",
+      "class": "StaticMesh",
+      "status": "ok",
+      "message": null,
+      "files": [
+        {
+          "path": "CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Nanite.glb",
+          "bytes": 131752,
+          "sha256": "34b63c2b55a0608ee60aa0c0e67bfb93896c1595fa2806fe47f7a7bf28059707"
+        }
+      ]
+    }
+  ]
+}
