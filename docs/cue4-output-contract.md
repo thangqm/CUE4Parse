@@ -106,9 +106,26 @@ Material slots are named after the UE material slot. A mesh section whose
 
 ## 6. Audio
 
-`.ogg` and `.wav` are final and play as-is. `.wem` (Wwise) and `.binka` (Bink) are **raw
-bytes** — the same bytes FModel extracts — and need vgmstream downstream to become
-playable. CUE4Parse bundles no codec; cue4 extracts, it does not transcode.
+A sound asset is written as one file whose extension is the decoder's reported format,
+lowercased. The extension names the **container**, not a transcode: cue4 extracts, it
+does not decode. CUE4Parse bundles no codec.
+
+| Extension | Header | Playable as-is |
+|---|---|---|
+| `.wav` | `RIFF….WAVE` | yes |
+| `.ogg` | `OggS` | yes |
+| `.opus` | `UEOPUS` | no — UE container, not an Ogg Opus stream |
+| `.binka` | `ABEU` | no — UE's Bink Audio container |
+| `.rada` | `ADAR` | no — UE's RAD Audio container |
+| `.adpcm` | `RIFF` | depends on the reader; ADPCM-coded WAV |
+| `.wem` | `RIFF` | no — Wwise; needs vgmstream |
+
+The unplayable ones carry the same bytes FModel extracts; FModel can play them only
+because it bundles vgmstream. Turning them into audio is a downstream step.
+
+`USoundWave`, `USoundNodeWave` and `UAkMediaAssetData` are exported. `USoundCue` is
+**not** — it is a node graph with no audio data of its own, and is reported as
+`skipped`.
 
 ## 7. Exit codes
 
@@ -159,7 +176,13 @@ Honest limits of what CI checks.
   texture parameter and no normal map, no SpecularMasks source, no emissive and no masked
   material. The other channels, every `EBlendMode` and the ORM swizzle are covered by
   fabricated `CMaterialParams2` sets built from real fixture textures.
-- **Wwise `.wem` export is not covered.** The fixture set contains no
-  `UAkMediaAssetData`.
+- **Wwise `.wem` export is not covered by CI.** The redistributable UE5_8 fixture set
+  contains no `UAkMediaAssetData`. The code path is the same one the covered formats use
+  (`SoundDecoder.Decode` → raw bytes → `ExportFile`), and the sibling formats it shares
+  that path with — BinkAudio, RAD Audio, Opus, Vorbis, PCM/ADPCM and the streamed
+  chunk-concatenation branch — are all covered by header assertions. But the specific
+  claim "a Wwise asset exports to a `.wem` starting with `RIFF` whose size matches the
+  source chunks" has only been checked by hand against a real Wwise title. Re-check it by
+  hand when touching `SoundExporter` or `SoundDecoder`.
 - **ACL-compressed animation decode is not covered.** The fixture set contains none, and
   game assets are not redistributable.

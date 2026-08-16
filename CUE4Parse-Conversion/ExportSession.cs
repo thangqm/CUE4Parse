@@ -9,8 +9,11 @@ using CUE4Parse.UE4.Assets.Exports.Component.SplineMesh;
 using CUE4Parse.UE4.Assets.Exports.Material;
 using CUE4Parse.UE4.Assets.Exports.Rig;
 using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
+using CUE4Parse.UE4.Assets.Exports.Sound;
+using CUE4Parse.UE4.Assets.Exports.Sound.Node;
 using CUE4Parse.UE4.Assets.Exports.StaticMesh;
 using CUE4Parse.UE4.Assets.Exports.Texture;
+using CUE4Parse.UE4.Assets.Exports.Wwise;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.Engine.Animation;
 using CUE4Parse_Conversion.Exporters;
@@ -57,6 +60,9 @@ public sealed class ExportSession(Action<StreamingLevelFilterArgs, CancellationT
             ALandscapeProxy landscape => Add(new LandscapeMeshExporter(landscape)),
             ULandscapeComponent landscape => Add(new LandscapeMeshExporter2(landscape)),
             USplineMeshComponent spline => Add(new SplineMeshExporter(spline)),
+            // Deliberately not USoundCue: a cue is a node graph, not audio data, and
+            // dispatching it here would write a bogus file instead of reporting a skip.
+            USoundWave or USoundNodeWave or UAkMediaAssetData => Add(new SoundExporter(export)),
             _ => throw new NotSupportedException($"Could not create exporter for export of type '{export.GetType().Name}'.")
         };
     }
