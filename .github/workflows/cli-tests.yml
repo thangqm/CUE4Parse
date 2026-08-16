@@ -1,0 +1,56 @@
+name: CLI Tests
+
+on:
+  pull_request:
+  push:
+    branches: [worktree-feat-cue4-cli]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cli-tests-linux:
+    name: cli-tests-linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install pinned glTF-Validator
+        run: |
+          set -euo pipefail
+          VERSION="$(cat tools/gltf-validator.version)"
+          URL="https://github.com/KhronosGroup/glTF-Validator/releases/download/${VERSION}/gltf_validator-${VERSION}-linux64.tar.xz"
+          curl -fsSL "$URL" -o /tmp/gltf_validator.tar.xz
+          mkdir -p /tmp/gltf-validator
+          tar -xJf /tmp/gltf_validator.tar.xz -C /tmp/gltf-validator
+          echo "GLTF_VALIDATOR=/tmp/gltf-validator/gltf_validator" >> "$GITHUB_ENV"
+
+      - name: Install pinned Blender
+        run: |
+          set -euo pipefail
+          VERSION="$(cat tools/blender.version)"
+          # Three components in the file; the release directory is MAJOR.MINOR only.
+          SERIES="${VERSION%.*}"
+          URL="https://download.blender.org/release/Blender${SERIES}/blender-${VERSION}-linux-x64.tar.xz"
+          curl -fsSL "$URL" -o /tmp/blender.tar.xz
+          mkdir -p /tmp/blender
+          tar -xJf /tmp/blender.tar.xz -C /tmp/blender --strip-components=1
+          echo "BLENDER=/tmp/blender/blender" >> "$GITHUB_ENV"
+          /tmp/blender/blender --version
+
+      - name: Run CLI tests
+        run: dotnet test CUE4Parse.Cli.Tests/CUE4Parse.Cli.Tests.csproj --configuration Release --logger "console;verbosity=normal"

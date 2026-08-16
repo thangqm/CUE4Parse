@@ -8,6 +8,13 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!--
+      Export tests encode PNGs through SkiaSharp. Without the Linux native asset every
+      texture export test throws DllNotFoundException: libSkiaSharp on the CI runner.
+    -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
