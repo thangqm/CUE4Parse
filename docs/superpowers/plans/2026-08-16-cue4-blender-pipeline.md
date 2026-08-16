@@ -148,17 +148,33 @@ condition #1 — "opens in Blender showing textures" — is otherwise checked by
 glTF-Validator structurally cannot check it: it does not resolve URIs the way Blender's
 importer does, does not decode PNG payloads, and has no concept of a shader node.
 
-Write a single line into `tools/blender.version`, e.g.:
+Write a single line into `tools/blender.version`:
 
 ```
-4.2.5
+5.2.0
 ```
 
-Pick an LTS. The download URL used in Step 5 is
+**Write all three components.** Step 5 derives the release directory with
+`SERIES="${VERSION%.*}"`, so a two-component `5.2` would strip to `5` and request
+`Blender5/`, which does not exist. Confirm the exact patch release before committing —
+if the current 5.2 point release is `5.2.1`, the file must say `5.2.1`:
+
+```bash
+curl -s https://download.blender.org/release/Blender5.2/ | grep -o 'blender-5\.2\.[0-9]*-linux-x64\.tar\.xz' | sort -u
+```
+
+The download URL used in Step 5 is
 `https://download.blender.org/release/Blender<MAJOR.MINOR>/blender-<VERSION>-linux-x64.tar.xz`,
 so the version string must match a real release directory. Pinning is not optional here for
 the same reason it was not for the validator: "imports cleanly into Blender" only means
 something against a Blender that does not move underneath the claim.
+
+> **Verify the glTF import operator on 5.x before trusting Step 3's script.** It calls
+> `bpy.ops.import_scene.gltf`, which is the 4.x spelling. Blender has been migrating
+> importers to `wm.*` operators across recent releases, so confirm the operator still exists
+> on the pinned build — one line in `blender -b --python-expr` will say. This fails loudly
+> (`AttributeError`, non-zero exit) rather than silently, so a wrong guess costs a CI run,
+> not a wrong result.
 
 - [ ] **Step 3: Write the validator wrapper and its failing test**
 
