@@ -32,16 +32,19 @@ public abstract class ExporterBase : IExporter
 
     protected internal ILogger Log { get; }
 
-    private ExporterBase(string packagePath, string objectName, string className)
+    private ExporterBase(string packagePath, string objectName, string className, string? nameSuffix)
     {
         PackagePath = packagePath;
         PackageDirectory = PackagePath.Contains('/') ? PackagePath.SubstringBeforeLast('/') : string.Empty;
 
+        // The suffix is appended *after* the leaf/name collapse, so a suffixed exporter
+        // writes a sibling file rather than nesting a folder.
         var leaf = PackagePath.SubstringAfterLast('/');
-        SavePath = (leaf.Equals(objectName, StringComparison.OrdinalIgnoreCase) ? PackagePath : PackagePath + '/' + objectName).TrimStart('/');
+        var basePath = (leaf.Equals(objectName, StringComparison.OrdinalIgnoreCase) ? PackagePath : PackagePath + '/' + objectName).TrimStart('/');
+        SavePath = basePath + nameSuffix;
         SaveDirectory = SavePath.Contains('/') ? SavePath.SubstringBeforeLast('/') : string.Empty;
 
-        ObjectName = objectName;
+        ObjectName = objectName + nameSuffix;
         ObjectPath = PackagePath + '.' + ObjectName;
         ClassName = className;
 
@@ -51,12 +54,13 @@ public abstract class ExporterBase : IExporter
             .ForContext("ExporterV2", true);
     }
 
-    protected ExporterBase(UObject export, string? className = null) : this(BuildPackagePath(export), export.Name, className ?? export.ExportType)
+    protected ExporterBase(UObject export, string? className = null, string? nameSuffix = null)
+        : this(BuildPackagePath(export), export.Name, className ?? export.ExportType, nameSuffix)
     {
 
     }
 
-    protected internal ExporterBase(GameFile file, string className) : this(file.PathWithoutExtension, file.NameWithoutExtension, className)
+    protected internal ExporterBase(GameFile file, string className) : this(file.PathWithoutExtension, file.NameWithoutExtension, className, null)
     {
         if (file.IsUePackagePayload)
             throw new ArgumentException("GameFile must not be a UE package payload file", nameof(file));
