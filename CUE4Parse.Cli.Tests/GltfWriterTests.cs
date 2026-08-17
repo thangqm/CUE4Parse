@@ -53,6 +53,64 @@ public class GltfWriterTests
         Assert.Contains(((JArray)json["nodes"]!).Select(node => node["name"]?.Value<string>()), name => name == expected);
     }
 
+    /// <summary>
+    /// The armature root is the file stem plus <c>.ao</c> — nothing more. Upstream also
+    /// appends <c>lod._suffix</c> here; this fork must not, because
+    /// <c>GltfMeshFormat.DatablockName</c> already builds the name as
+    /// <c>ObjectName + lod._suffix</c>, so appending it again gives
+    /// <c>SK_X_LOD2.ao_LOD2</c>. Nothing else pins this, and it type-checks either way.
+    /// </summary>
+    [Fact]
+    public async Task SkeletalArmatureRootIsTheFileNamePlusAo()
+    {
+        var flags = ExportFlagDefaults.Gltf2() with { MeshQuality = "all" };
+        var output = await ExportAsync("CUE4ParseFixtures/Content/Fixtures/Meshes/SK_Fixture.uasset", flags);
+
+        var files = Directory.GetFiles(output.FullName, "*.glb", SearchOption.AllDirectories);
+        Assert.True(files.Length > 1, $"single-LOD export cannot tell this fork from upstream; got {files.Length} glb file(s)");
+
+        foreach (var glb in files)
+        {
+            var expected = Path.GetFileNameWithoutExtension(glb) + ".ao";
+            var names = ((JArray)ReadGlbJson(glb)["nodes"]!).Select(node => node["name"]?.Value<string>());
+
+            Assert.Contains(expected, names);
+        }
+    }
+
+    /// <summary>
+    /// §5 of the output contract holds for the <c>_LOD{n}</c> siblings too, not just for a
+    /// single-LOD export: every <c>.glb</c> names its datablock and root node after its
+    /// own file. <c>MeshDatablockAndRootNodeAreNamedAfterTheFile</c> only ever sees one
+    /// file, so it cannot catch a writer that ignores <c>lod._suffix</c>.
+    /// <para>
+    /// The <c>_Nanite</c> suffix is not reachable from the fixture set: <c>SM_Nanite</c>
+    /// carries no render LODs, so every <c>--nanite</c> mode yields its Nanite LOD first
+    /// and therefore unsuffixed.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task EverySuffixedSiblingIsNamedAfterItsOwnFile()
+    {
+        var flags = ExportFlagDefaults.Gltf2() with { MeshQuality = "all" };
+        var output = await ExportAsync("CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Fixture.uasset", flags);
+
+        var files = Directory.GetFiles(output.FullName, "*.glb", SearchOption.AllDirectories);
+        var stems = files.Select(Path.GetFileNameWithoutExtension).ToList();
+
+        Assert.Contains(stems, stem => stem == "SM_Fixture");
+        Assert.Contains(stems, stem => stem!.StartsWith("SM_Fixture_LOD", StringComparison.Ordinal));
+
+        foreach (var glb in files)
+        {
+            var expected = Path.GetFileNameWithoutExtension(glb);
+            var json = ReadGlbJson(glb);
+
+            Assert.Equal(expected, json["meshes"]![0]!["name"]!.Value<string>());
+            Assert.Contains(expected, ((JArray)json["nodes"]!).Select(node => node["name"]?.Value<string>()));
+        }
+    }
+
     [Fact]
     public async Task NoMaterialsFallsBackToBareMaterialSlots()
     {
