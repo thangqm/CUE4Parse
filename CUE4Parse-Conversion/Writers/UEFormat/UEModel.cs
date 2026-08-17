@@ -122,6 +122,23 @@ public sealed class UEModel : UEFormatExport
         }));
     }
 
+    /// <summary>
+    /// Exact normalization, unlike <c>FVector.Normalize</c>, which goes through
+    /// <c>MathUtils.InvSqrt</c> — a fast inverse square root carrying ~0.175% error that
+    /// has no place in a written attribute.
+    /// <para>
+    /// A zero-length input is returned unchanged rather than divided by zero. Nanite
+    /// clusters with <c>bHasTangents == false</c> give every vertex a zero tangent, and a
+    /// cluster vertex with no attributes stays at <c>default</c>, so both channels really
+    /// do see zero vectors; dividing would write NaN into the file.
+    /// </para>
+    /// </summary>
+    private static FVector NormalizeExact(FVector vec)
+    {
+        var lengthSquared = vec | vec;
+        return lengthSquared > 0f ? vec / MathF.Sqrt(lengthSquared) : vec;
+    }
+
     private static void WriteCommonMesh<TVertex>(FDataAttributeSet attrs, MeshLodDto<TVertex> lod)
         where TVertex : struct, IMeshVertex
     {
@@ -131,20 +148,11 @@ public sealed class UEModel : UEFormatExport
         attrs.AddAttribute("NORMALS", attr => attr.WriteArray(lod.Vertices, (writer, vertex) =>
         {
             writer.Write(vertex.Normal.W);
-            var normal = (FVector) vertex.Normal;
-            normal /= MathF.Sqrt(normal | normal);
-            normal.Serialize(writer);
+            NormalizeExact((FVector) vertex.Normal).Serialize(writer);
         }));
 
         attrs.AddAttribute("TANGENTS", attr => attr.WriteArray(lod.Vertices, (writer, vertex) =>
-        {
-            var tangent = (FVector) vertex.Tangent;
-            // Exact, matching the NORMALS attribute directly above; FVector.Normalize
-            // goes through MathUtils.InvSqrt and would reintroduce the fast-inverse-
-            // square-root error (~0.175%) here alone.
-            tangent /= MathF.Sqrt(tangent | tangent);
-            tangent.Serialize(writer);
-        }));
+            NormalizeExact((FVector) vertex.Tangent).Serialize(writer)));
 
         attrs.AddAttribute("TEXCOORDS", attr =>
         {

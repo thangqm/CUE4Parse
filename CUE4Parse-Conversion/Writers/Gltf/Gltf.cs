@@ -328,7 +328,16 @@ public class Gltf
         // to about 0.175%. That is fine inside the engine's own maths and not fine for
         // a NORMAL accessor a validator checks for unit length. InvSqrt itself stays as
         // it is — it has callers well outside the write path.
-        var normalized = Vector3.Normalize(new Vector3(vec.X, vec.Z, vec.Y));
+        //
+        // Zero passes straight through, which is what FVector.Normalize did: a Nanite
+        // cluster vertex with no attributes is left at default, so its normal really is
+        // the zero vector, and Vector3.Normalize would turn that into NaN — an
+        // ACCESSOR_INVALID_FLOAT the validator rejects outright, rather than the
+        // non-unit-length warning it used to be.
+        var swapped = new Vector3(vec.X, vec.Z, vec.Y);
+        if (swapped.LengthSquared() <= 0f) return new FVector(swapped.X, swapped.Y, swapped.Z);
+
+        var normalized = Vector3.Normalize(swapped);
         return new FVector(normalized.X, normalized.Y, normalized.Z);
     }
 

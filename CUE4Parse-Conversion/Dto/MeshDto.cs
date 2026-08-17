@@ -162,8 +162,8 @@ public abstract class MeshDto<TVertex> : ObjectDto where TVertex : struct, IMesh
     {
         // suffix is used for writing to disk
         // the file with no suffix is considered the main quality, that's what world exporter references
-        // nanite lod always has SourceLodIndex 0, same as real lod 0, so we can't key off SourceLodIndex or they would collide
-        // so use position in the list instead
+        // the nanite lod carries SourceLodIndex uint.MaxValue, so it names itself "_Nanite";
+        // which lod goes unsuffixed is still decided by position in the list, not by index
 
         for (var i = 0; i < LODs.Count; i++)
         {

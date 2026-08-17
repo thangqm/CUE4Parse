@@ -99,7 +99,11 @@ public readonly struct SkinnedMeshVertex : IMeshVertex, INaniteVertex<SkinnedMes
         _influences = idx == count ? influences : influences[..idx];
     }
 
-    private SkinnedMeshVertex(FVector position, FNaniteVertexAttributes attributes, bool hasTangents) : this(position, new FVector4(attributes.Normal), hasTangents ? attributes.TangentXAndSign : FVector4.ZeroVector, new FMeshUVFloat(attributes.UVs[0].X, attributes.UVs[0].Y))
+    // Same (0, 0, 0, 1) tangent fallback as MeshVertex, and for the same reason: the glTF
+    // writer runs Vector4.Normalize over the whole tangent, which turns an all-zero
+    // FVector4 into NaN. Skeletal Nanite geometry is exported whenever --nanite asks for
+    // it, so this path is as reachable as the static one.
+    private SkinnedMeshVertex(FVector position, FNaniteVertexAttributes attributes, bool hasTangents) : this(position, new FVector4(attributes.Normal), hasTangents ? attributes.TangentXAndSign : new FVector4(0, 0, 0, 1), new FMeshUVFloat(attributes.UVs[0].X, attributes.UVs[0].Y))
     {
         _influences = new MeshBoneInfluenceDto[attributes.Influences.Length];
         for (var i = 0; i < _influences.Length; i++)

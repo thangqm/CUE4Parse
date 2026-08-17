@@ -21,7 +21,9 @@ public partial class MeshLodDto<TVertex> where TVertex : struct, IMeshVertex
 
     internal string? _suffix;
 
-    private MeshLodDto(MeshDto<TVertex> owner, uint sourceLodIndex, uint[] indices, TVertex[] vertices, MeshSectionDto[] sections, FMeshUVFloat[][] extraUvs, MeshVertexColorDto[]? vertexColors = null, float screenSize = 0.0f, bool isTwoSided = false, bool isNanite = false)
+    // No isNanite parameter: IsNanite is derived from sourceLodIndex, so a flag here
+    // would be a second, ignorable way to say the same thing.
+    private MeshLodDto(MeshDto<TVertex> owner, uint sourceLodIndex, uint[] indices, TVertex[] vertices, MeshSectionDto[] sections, FMeshUVFloat[][] extraUvs, MeshVertexColorDto[]? vertexColors = null, float screenSize = 0.0f, bool isTwoSided = false)
     {
         if (owner.Materials.Length > 0)
         {
