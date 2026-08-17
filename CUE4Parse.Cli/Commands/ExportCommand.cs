@@ -66,20 +66,15 @@ public static class ExportCommand
             {
                 foreach (var export in provider.LoadPackage(file).GetExports())
                 {
-                    try
+                    // The common case on a broad glob: data tables, blueprints and
+                    // settings objects have no exporter and that is not a failure.
+                    if (session.TryAdd(export)) continue;
+
+                    output.WriteLine(new
                     {
-                        // ExportSession.Add is a type switch over a trivially constructed
-                        // ExporterBase, so this can only throw for "no exporter exists".
-                        session.Add(export);
-                    }
-                    catch (NotSupportedException)
-                    {
-                        output.WriteLine(new
-                        {
-                            path, status = "skipped", export = export.Name,
-                            reason = "no exporter for this type",
-                        });
-                    }
+                        path, status = "skipped", export = export.Name,
+                        reason = "no exporter for this type",
+                    });
                 }
             }
             catch (Exception ex)

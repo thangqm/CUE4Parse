@@ -91,14 +91,10 @@ public static class ProviderFactory
 
             provider.PostMount();
         }
-        catch (CliException)
-        {
-            provider.Dispose();
-            throw;
-        }
         catch (Exception ex)
         {
             provider.Dispose();
+            if (ex is CliException) throw;
 
             // Defer to the shared classifier so a failure it already recognises keeps
             // its own exit code rather than being flattened into MOUNT_FAILED.
@@ -182,28 +178,18 @@ public static class ProviderFactory
     }
 
     /// <summary>
-    /// FGuid exposes no TryParse: the only string entry point is a ctor requiring
-    /// exactly 32 hex characters, which throws on the dashed form fortnite-api returns.
+    /// FGuid's own string ctor requires exactly 32 hex characters and throws on the dashed
+    /// form fortnite-api returns, but <c>FGuid</c> converts implicitly from
+    /// <see cref="Guid"/> — which parses the bare, dashed and braced forms and validates
+    /// them for us.
     /// </summary>
     public static FGuid ParseAesGuid(string value)
     {
-        var hex = value.Trim().Trim('{', '}').Replace("-", string.Empty);
+        if (Guid.TryParse(value.Trim(), out var guid)) return guid;
 
-        if (hex.Length != 32 || !hex.All(Uri.IsHexDigit))
-        {
-            throw new CliException(
-                ExitCode.AesKey, "BAD_AES_GUID",
-                $"AES GUID must be 32 hex characters, with or without dashes. Got '{value}'.");
-        }
-
-        try
-        {
-            return new FGuid(hex);
-        }
-        catch (Exception ex)
-        {
-            throw new CliException(ExitCode.AesKey, "BAD_AES_GUID", $"Malformed AES GUID '{value}': {ex.Message}");
-        }
+        throw new CliException(
+            ExitCode.AesKey, "BAD_AES_GUID",
+            $"AES GUID must be 32 hex characters, with or without dashes. Got '{value}'.");
     }
 
     /// <summary>

@@ -62,10 +62,15 @@ public static class DumpCommand
     /// </summary>
     private static JToken Load(AbstractFileProvider provider, GameFile file, DumpOptions options)
     {
-        if (options.ExportName is { } name)
-            return JToken.FromObject(provider.LoadPackageObject(file.Path, name));
+        // Loaded off the resolved GameFile, not the path: a path lookup goes back through
+        // the provider's index, which sorts every mounted index on each call — the cost
+        // TargetResolver exists to pay once.
+        var package = provider.LoadPackage(file);
 
-        IEnumerable<UObject> exports = provider.LoadPackage(file).GetExports();
+        if (options.ExportName is { } name)
+            return JToken.FromObject(package.GetExport(name, provider.StringComparison));
+
+        IEnumerable<UObject> exports = package.GetExports();
 
         if (options.ClassName is { } className)
         {

@@ -1,6 +1,7 @@
 using System;
 using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse_Conversion.Options;
+using CUE4Parse_Conversion.Textures;
 
 namespace CUE4Parse_Conversion.Exporters;
 
@@ -21,27 +22,19 @@ namespace CUE4Parse_Conversion.Exporters;
 /// </summary>
 public static class TextureFileNamer
 {
-    public static (string Extension, string? Suffix) Name(UTexture texture, ExportOptions options, int layer = 0)
-        => (Extension(texture, options), Suffix(texture, options, layer));
-
     public static string Extension(UTexture texture, ExportOptions options)
-    {
-        if (options.ExportHdrTexturesAsHdr && IsHdrSource(texture))
-            return "hdr";
+        => options.ExportHdrTexturesAsHdr && IsHdrSource(texture)
+            ? "hdr"
+            : TextureEncoder.ExtensionFor(options.TextureFormat);
 
-        return options.TextureFormat switch
-        {
-            ETextureFormat.Png => "png",
-            ETextureFormat.Jpeg => "jpg",
-            ETextureFormat.Webp => "webp",
-            ETextureFormat.Tga => "tga",
-            _ => throw new NotSupportedException("Unsupported texture format: " + options.TextureFormat),
-        };
-    }
-
-    public static string? Suffix(UTexture texture, ExportOptions options, int layer = 0)
+    /// <param name="mipIndex">
+    /// Which mip is being named. Defaults to the first — the only one that exists unless
+    /// <c>--all-mips</c> is on, and the only one a caller predicting a name can know
+    /// about.
+    /// </param>
+    public static string? Suffix(UTexture texture, ExportOptions options, int layer = 0, int? mipIndex = null)
     {
-        var mip = options.ExportAllTextureMips ? $"_MIP{texture.GetFirstMipIndex()}" : null;
+        var mip = options.ExportAllTextureMips ? $"_MIP{mipIndex ?? texture.GetFirstMipIndex()}" : null;
         return texture is UTexture2DArray ? $"{mip}_LAYER{layer}" : mip;
     }
 

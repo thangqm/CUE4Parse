@@ -67,8 +67,13 @@ public static class ExportManifest
     private static FileRecord Describe(string absolutePath, string outputRoot)
     {
         var relative = Path.GetRelativePath(outputRoot, absolutePath).Replace(Path.DirectorySeparatorChar, '/');
-        var bytes = File.ReadAllBytes(absolutePath);
-        return new FileRecord(relative, bytes.LongLength, Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+
+        // Streamed rather than ReadAllBytes: exported 4K textures and Nanite meshes run to
+        // hundreds of megabytes, and buffering one whole file per entry only to hash it
+        // puts every one of them on the large object heap.
+        using var stream = File.OpenRead(absolutePath);
+        var hash = SHA256.HashData(stream);
+        return new FileRecord(relative, stream.Length, Convert.ToHexString(hash).ToLowerInvariant());
     }
 
     private sealed record FileRecord(string path, long bytes, string sha256);

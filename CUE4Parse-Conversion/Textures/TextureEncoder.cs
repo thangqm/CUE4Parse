@@ -19,36 +19,47 @@ public static class TextureEncoder
             return bitmap.ToHdrBitmap();
         }
 
+        ext = ExtensionFor(format);
         switch (format)
         {
             case ETextureFormat.Png:
             {
-                ext = "png";
                 using var bmp = bitmap.ToSkBitmap();
                 using var data = bmp.Encode(SKEncodedImageFormat.Png, quality);
                 return data.ToArray();
             }
             case ETextureFormat.Jpeg:
             {
-                ext = "jpg";
                 using var bmp = bitmap.ToSkBitmap();
                 using var data = bmp.Encode(SKEncodedImageFormat.Jpeg, quality);
                 return data.ToArray();
             }
             case ETextureFormat.Webp:
             {
-                ext = "webp";
                 using var bmp = bitmap.ToSkBitmap();
                 using var data = bmp.Encode(SKEncodedImageFormat.Webp, quality);
                 return data.ToArray();
             }
             case ETextureFormat.Tga:
-                ext = "tga";
                 return EncodeTga(bitmap);
             default: throw new NotImplementedException("Unsupported texture format: " + format);
             //TODO: ETextureFormat.Dds
         }
     }
+
+    /// <summary>
+    /// The file extension <see cref="Encode(CTexture, ETextureFormat, bool, out string, int)"/>
+    /// reports for a raster format. Shared with <c>TextureFileNamer</c> so a predicted
+    /// name and a written file cannot spell the same format differently.
+    /// </summary>
+    public static string ExtensionFor(ETextureFormat format) => format switch
+    {
+        ETextureFormat.Png => "png",
+        ETextureFormat.Jpeg => "jpg",
+        ETextureFormat.Webp => "webp",
+        ETextureFormat.Tga => "tga",
+        _ => throw new NotImplementedException("Unsupported texture format: " + format),
+    };
 
     private static byte[] EncodeTga(CTexture bitmap)
     {

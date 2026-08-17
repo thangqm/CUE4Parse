@@ -36,17 +36,29 @@ public sealed class OrmTextureExporter(UTexture texture)
         ct.ThrowIfCancellationRequested();
 
         using var source = decoded.ToSkBitmap();
-        using var repacked = new SKBitmap(source.Width, source.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        using var repacked = new SKBitmap(new SKImageInfo(source.Width, source.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
 
-        for (var y = 0; y < source.Height; y++)
-        for (var x = 0; x < source.Width; x++)
+        // Skia's per-pixel accessors cross into native code twice per pixel — a 4K
+        // specular map is 33M interop calls, more than the block decode and the PNG
+        // encode on either side of this cost together. Let Skia do the format
+        // normalisation in one native pass instead, then shuffle bytes in place.
+        using var pixmap = source.PeekPixels();
+        if (pixmap is null || !pixmap.ReadPixels(repacked.Info, repacked.GetPixels(), repacked.RowBytes))
         {
-            var pixel = source.GetPixel(x, y);
+            throw new Exception("Failed to read decoded texture pixels for ORM repacking");
+        }
 
-            // R = occlusion, left neutral: the source red channel is specular, not AO,
-            // and writing it would be an invention. G = roughness (source blue),
-            // B = metallic (source green).
-            repacked.SetPixel(x, y, new SKColor(255, pixel.Blue, pixel.Green, 255));
+        unsafe
+        {
+            var pixels = new Span<byte>((void*)repacked.GetPixels(), repacked.ByteCount);
+            for (var i = 0; i < pixels.Length; i += 4)
+            {
+                // R = occlusion, left neutral: the source red channel is specular, not
+                // AO, and writing it would be an invention. G = roughness (source blue),
+                // B = metallic (source green).
+                (pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]) =
+                    ((byte)255, pixels[i + 2], pixels[i + 1], (byte)255);
+            }
         }
 
         using var data = repacked.Encode(SKEncodedImageFormat.Png, Session.Options.TextureQuality);

@@ -27,6 +27,14 @@ public abstract class MeshDto<TVertex> : ObjectDto where TVertex : struct, IMesh
     public FPackageIndex[]? Sockets { get; private set; }
     public abstract FBox Bounds { get; protected init; }
 
+    /// <summary>
+    /// Whether the source asset carried Nanite geometry — which says nothing about
+    /// whether any of it was exported. Recorded by the ctor that already inspects it, so
+    /// a caller wanting the fact (see <c>MeshExporter.WarnIfNaniteDataIsBeingDropped</c>)
+    /// does not re-derive the condition from the UObject.
+    /// </summary>
+    public bool HasNaniteData { get; protected init; }
+
     protected MeshDto(UObject owner) : base(owner)
     {
 
@@ -194,7 +202,8 @@ public class StaticMeshDto : MeshDto<MeshVertex>
     {
         Bounds = new FBox(FVector.ZeroVector, FVector.OneVector);
 
-        if (nanite.PageStreamingStates.Length > 0)
+        HasNaniteData = nanite.PageStreamingStates.Length > 0;
+        if (HasNaniteData)
         {
             ParseNaniteResources(this, nanite, naniteFormat);
         }
@@ -215,8 +224,11 @@ public class StaticMeshDto : MeshDto<MeshVertex>
             ParseMeshRenderData(mesh.RenderData, quality, spline);
         }
 
+        var nanite = mesh.RenderData.NaniteResources is { PageStreamingStates.Length: > 0 } resources ? resources : null;
+        HasNaniteData = nanite is not null;
+
         var shouldParseNanite = naniteFormat != ENaniteMeshFormat.NoNanite || LODs.Count == 0;
-        if (shouldParseNanite && mesh.RenderData.NaniteResources is { PageStreamingStates.Length: > 0 } nanite)
+        if (shouldParseNanite && nanite is not null)
         {
             ParseNaniteResources(this, nanite, naniteFormat);
         }
@@ -246,8 +258,11 @@ public class StaticMeshDto : MeshDto<MeshVertex>
             ParseCollectionRenderData(mesh.RenderData);
         }
 
+        var nanite = mesh.RenderData.NaniteResources is { PageStreamingStates.Length: > 0 } resources ? resources : null;
+        HasNaniteData = nanite is not null;
+
         var shouldParseNanite = naniteFormat != ENaniteMeshFormat.NoNanite || LODs.Count == 0;
-        if (shouldParseNanite && mesh.RenderData.NaniteResources is { PageStreamingStates.Length: > 0 } nanite)
+        if (shouldParseNanite && nanite is not null)
         {
             ParseNaniteResources(this, nanite, naniteFormat);
 
@@ -288,17 +303,13 @@ public class StaticMeshDto : MeshDto<MeshVertex>
 
     private void ParseCollectionRenderData(FGeometryCollectionRenderData renderData)
     {
-        FGeometryCollectionMeshResources? resources = null;
-        FGeometryCollectionMeshDescription? description = null;
-        if (renderData.CustomData is List<(FGeometryCollectionMeshResources?, FGeometryCollectionMeshDescription?)> { Count: > 0 } customData) // MR
-        {
-            resources = customData[0].Item1;
-            description = customData[0].Item2;
-            // CustomData[0] = SM
-            // CustomData[1] = plane
-            // CustomData[2] = SK?? it really looks like it's CustomData[0] with all bones at the origin
-            // CustomData[3] = plane
-        }
+        // CustomData[0] = SM
+        // CustomData[1] = plane
+        // CustomData[2] = SK?? it really looks like it's CustomData[0] with all bones at the origin
+        // CustomData[3] = plane
+        var (resources, description) = renderData.CustomData is List<(FGeometryCollectionMeshResources?, FGeometryCollectionMeshDescription?)> { Count: > 0 } customData // MR
+            ? customData[0]
+            : (null, null);
 
         ArgumentNullException.ThrowIfNull(resources, "Geometry collection has no mesh resources");
         ArgumentNullException.ThrowIfNull(description, "Geometry collection has no mesh description");
@@ -397,8 +408,11 @@ public sealed class SkeletalMeshDto : SkeletonDto
         // requested, and both sibling StaticMeshDto ctors use exactly the condition below,
         // so the skeletal path was the odd one out. `exportMorphTarget` is kept in the
         // signature, unused, so the ctor stays merge-compatible with upstream.
+        var nanite = mesh.NaniteResources is { PageStreamingStates.Length: > 0 } resources ? resources : null;
+        HasNaniteData = nanite is not null;
+
         var shouldParseNanite = naniteFormat != ENaniteMeshFormat.NoNanite || LODs.Count == 0;
-        if (shouldParseNanite && mesh.NaniteResources is { PageStreamingStates.Length: > 0 } nanite)
+        if (shouldParseNanite && nanite is not null)
         {
             ParseNaniteResources(this, nanite, naniteFormat);
         }

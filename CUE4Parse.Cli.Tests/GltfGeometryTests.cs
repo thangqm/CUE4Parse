@@ -9,9 +9,8 @@ public class GltfGeometryTests
     public static Vector3[] ReadVec3Accessor(string glbPath, int accessorIndex)
     {
         var bytes = File.ReadAllBytes(glbPath);
-        var jsonLength = BitConverter.ToInt32(bytes, 12);
-        var json = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes, 20, jsonLength));
-        var binaryStart = 20 + jsonLength + 8; // json chunk, then BIN chunk header
+        var json = GltfWriterTests.ReadGlbJson(glbPath);
+        var binaryStart = 20 + BitConverter.ToInt32(bytes, 12) + 8; // json chunk, then BIN chunk header
 
         var accessor = json["accessors"]![accessorIndex]!;
         Assert.Equal("VEC3", accessor["type"]!.Value<string>());
@@ -37,9 +36,7 @@ public class GltfGeometryTests
 
     public static int AccessorIndex(string glbPath, string attribute)
     {
-        var bytes = File.ReadAllBytes(glbPath);
-        var jsonLength = BitConverter.ToInt32(bytes, 12);
-        var json = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes, 20, jsonLength));
+        var json = GltfWriterTests.ReadGlbJson(glbPath);
         return json["meshes"]![0]!["primitives"]![0]!["attributes"]![attribute]!.Value<int>();
     }
 
@@ -67,9 +64,7 @@ public class GltfGeometryTests
         var output = await GltfWriterTests.ExportAsync("CUE4ParseFixtures/Content/Fixtures/Meshes/SK_Fixture.uasset");
         var glb = GltfWriterTests.SingleGlb(output);
 
-        var bytes = File.ReadAllBytes(glb);
-        var jsonLength = BitConverter.ToInt32(bytes, 12);
-        var json = JObject.Parse(System.Text.Encoding.UTF8.GetString(bytes, 20, jsonLength));
+        var json = GltfWriterTests.ReadGlbJson(glb);
 
         if (json["meshes"]![0]!["primitives"]![0]!["targets"] is not JArray { Count: > 0 } targets)
         {

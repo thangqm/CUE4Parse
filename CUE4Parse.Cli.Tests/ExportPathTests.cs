@@ -1,7 +1,3 @@
-using CUE4Parse.Cli.Commands;
-using CUE4Parse.Cli.Output;
-using CUE4Parse.Cli.Services;
-
 namespace CUE4Parse.Cli.Tests;
 
 public class ExportPathTests
@@ -17,18 +13,7 @@ public class ExportPathTests
     [Fact]
     public async Task ExportWritesFilesUsingThePlatformSeparatorAndTheyExistOnDisk()
     {
-        var output = Directory.CreateTempSubdirectory();
-        var (context, _) = FixtureSupport.Context();
-
-        var code = await ExportCommand.ExecuteAsync(context, new ExportCommandOptions(
-            Paths: ["CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Fixture.uasset"],
-            Criteria: new MatchCriteria(null, null, null, null),
-            Output: output,
-            Flags: ExportFlagDefaults.Gltf2(),
-            Parallel: 1,
-            Force: false), TestContext.Current.CancellationToken);
-
-        Assert.Equal((int)ExitCode.Success, code);
+        var output = await GltfWriterTests.ExportAsync("CUE4ParseFixtures/Content/Fixtures/Meshes/SM_Fixture.uasset");
 
         var written = Directory.GetFiles(output.FullName, "*", SearchOption.AllDirectories);
         Assert.NotEmpty(written);

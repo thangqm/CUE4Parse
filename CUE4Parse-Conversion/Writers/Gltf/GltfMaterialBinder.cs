@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using System.Text;
@@ -50,7 +52,7 @@ public static class GltfMaterialBinder
         var builder = new MaterialBuilder(slotName).WithMetallicRoughnessShader();
 
         BindBaseColor(builder, parameters, options, meshSaveDirectory);
-        BindMetallicRoughness(builder, parameters, options, meshSaveDirectory);
+        BindMetallicRoughness(builder, parameters, meshSaveDirectory);
         BindNormal(builder, parameters, options, meshSaveDirectory);
         BindEmissive(builder, parameters, options, meshSaveDirectory);
         BindAlphaAndSides(builder, material, parameters);
@@ -67,7 +69,7 @@ public static class GltfMaterialBinder
             ? new Vector4(color.R, color.G, color.B, color.A)
             : null;
 
-        if (TryImage(parameters, DiffuseNames, options, from, null, out var image))
+        if (TryImage(parameters, DiffuseNames, options, from, out var image))
         {
             builder.WithBaseColor(image, tint);
         }
@@ -77,20 +79,37 @@ public static class GltfMaterialBinder
         }
     }
 
-    private static void BindMetallicRoughness(MaterialBuilder builder, CMaterialParams2 parameters, ExportOptions options, string from)
+    private static void BindMetallicRoughness(MaterialBuilder builder, CMaterialParams2 parameters, string from)
     {
         // glTF fixes G = roughness, B = metallic; UE's SRM pack is G = metallic,
         // B = roughness. glTF 2.0 has no channel swizzle, so the URI points at the
         // repacked sibling OrmTextureExporter writes, always as PNG.
-        if (TryImage(parameters, SpecularNames, options, from, OrmSuffix, out var image, forcePng: true))
-        {
-            builder.WithMetallicRoughness(image, null, null);
-        }
+        if (!TryGetOrmSource(parameters, out var texture)) return;
+
+        var uri = EncodeUri(ExporterBase.Resolve(texture, from, "png", OrmSuffix));
+        builder.WithMetallicRoughness(CreateImage(uri), null, null);
+    }
+
+    /// <summary>
+    /// The texture glTF's metallicRoughness slot points at, if any — the one place that
+    /// classification lives. <c>MaterialExporter</c> enqueues the repacked sibling off
+    /// this and <see cref="BindMetallicRoughness"/> emits its URI off this, so the file
+    /// written and the file referenced are the same file by construction rather than by
+    /// two copies of the rule agreeing.
+    /// </summary>
+    internal static bool TryGetOrmSource(CMaterialParams2 parameters, [NotNullWhen(true)] out UTexture? texture)
+    {
+        // A cube map's panorama has no UV mapping that matches the mesh, so neither side
+        // of the pair wants it.
+        if (parameters.TryGetTexture2d(out texture, SpecularNames) && texture is not UTextureCube) return true;
+
+        texture = null;
+        return false;
     }
 
     private static void BindNormal(MaterialBuilder builder, CMaterialParams2 parameters, ExportOptions options, string from)
     {
-        if (TryImage(parameters, NormalNames, options, from, null, out var image))
+        if (TryImage(parameters, NormalNames, options, from, out var image))
         {
             builder.WithNormal(image, 1f);
         }
@@ -102,7 +121,7 @@ public static class GltfMaterialBinder
             ? new Vector3(color.R, color.G, color.B)
             : null;
 
-        if (TryImage(parameters, EmissiveNames, options, from, null, out var image))
+        if (TryImage(parameters, EmissiveNames, options, from, out var image))
         {
             builder.WithEmissive(image, factor, 1f);
         }
@@ -117,7 +136,7 @@ public static class GltfMaterialBinder
         var mode = ToAlphaMode(parameters.BlendMode);
         var root = RootMaterial(material);
 
-        builder.WithAlpha(mode, mode == SharpGLTF.Materials.AlphaMode.MASK ? OpacityMaskClipValue(material, root) : 0.5f);
+        builder.WithAlpha(mode, mode == SharpGLTF.Materials.AlphaMode.MASK ? OpacityMaskClipValue(material) : 0.5f);
         builder.WithDoubleSide(root?.TwoSided == true);
     }
 
@@ -130,9 +149,11 @@ public static class GltfMaterialBinder
 
     /// <summary>
     /// The nearest explicit override wins; otherwise the root UMaterial's value;
-    /// otherwise UE's own default of 0.333.
+    /// otherwise UE's own default of 0.333. This walks the same chain, with the same
+    /// bound, as <see cref="RootMaterial"/> — so reaching the end means there is no root
+    /// to fall back on.
     /// </summary>
-    private static float OpacityMaskClipValue(UMaterialInterface material, UMaterial? root)
+    private static float OpacityMaskClipValue(UMaterialInterface material)
     {
         var current = material;
         for (var depth = 0; current is not null && depth < 16; depth++)
@@ -146,7 +167,7 @@ public static class GltfMaterialBinder
             current = (current as UMaterialInstance)?.Parent as UMaterialInterface;
         }
 
-        return root?.OpacityMaskClipValue ?? 0.333f;
+        return 0.333f;
     }
 
     /// <summary>Walks the Parent chain to the concrete UMaterial. Bounded so a cyclic
@@ -165,7 +186,7 @@ public static class GltfMaterialBinder
 
     private static bool TryImage(
         CMaterialParams2 parameters, string[] names, ExportOptions options,
-        string from, string? nameSuffix, out ImageBuilder image, bool forcePng = false)
+        string from, out ImageBuilder image)
     {
         image = null!;
         if (!parameters.TryGetTexture2d(out var texture, names)) return false;
@@ -178,9 +199,10 @@ public static class GltfMaterialBinder
             return false;
         }
 
-        var extension = forcePng ? "png" : TextureFileNamer.Extension(texture, options);
-        var suffix = nameSuffix ?? TextureFileNamer.Suffix(texture, options);
-        var uri = EncodeUri(ExporterBase.Resolve(texture, from, extension, suffix));
+        var uri = EncodeUri(ExporterBase.Resolve(
+            texture, from,
+            TextureFileNamer.Extension(texture, options),
+            TextureFileNamer.Suffix(texture, options)));
 
         image = CreateImage(uri);
         return true;
@@ -204,16 +226,35 @@ public static class GltfMaterialBinder
     /// </summary>
     public static ImageBuilder CreateImage(string uri)
     {
+        // The placeholder bytes depend on nothing but the URI, and a mesh binds the same
+        // URI once per section per LOD, so encode each one once per process. Only the
+        // bytes are shared — the ImageBuilder is per-call, since the caller hands it to a
+        // model that may mutate it.
+        var image = ImageBuilder.From(PlaceholderCache.GetOrAdd(uri, EncodePlaceholder), uri);
+        image.AlternateWriteFileName = uri;
+        return image;
+    }
+
+    private static readonly ConcurrentDictionary<string, MemoryImage> PlaceholderCache = new();
+
+    private static MemoryImage EncodePlaceholder(string uri)
+    {
         var bytes = Encoding.ASCII.GetBytes(uri);
         using var bitmap = new SKBitmap(Math.Max(bytes.Length, 1), 1, SKColorType.Rgba8888, SKAlphaType.Unpremul);
-        for (var i = 0; i < bytes.Length; i++)
+
+        unsafe
         {
-            bitmap.SetPixel(i, 0, new SKColor(bytes[i], 0, 0, 255));
+            var pixels = new Span<byte>((void*)bitmap.GetPixels(), bitmap.ByteCount);
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                pixels[i * 4] = bytes[i];
+                pixels[i * 4 + 1] = 0;
+                pixels[i * 4 + 2] = 0;
+                pixels[i * 4 + 3] = 255;
+            }
         }
 
         using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
-        var image = ImageBuilder.From(new MemoryImage(data.ToArray()), uri);
-        image.AlternateWriteFileName = uri;
-        return image;
+        return new MemoryImage(data.ToArray());
     }
 }

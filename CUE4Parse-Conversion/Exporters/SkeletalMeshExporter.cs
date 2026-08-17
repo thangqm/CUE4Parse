@@ -16,14 +16,17 @@ public sealed class SkeletalMeshExporter(USkeletalMesh originalMesh) : MeshExpor
             originalMesh.PopulateMorphTargetVerticesData();
         }
 
-        using var dto = new SkeletalMeshDto(originalMesh, Session.Options.MeshQuality, Session.Options.NaniteMeshFormat, Session.Options.ExportMorphTargets);
+        // ExportMorphTargets is deliberately not forwarded: the DTO's fourth parameter is
+        // kept unused for merge compatibility with upstream (see SkeletalMeshDto), and the
+        // option is honoured by the writers, off MeshExportContext. Passing it here would
+        // read as if the DTO gated morph targets.
+        using var dto = new SkeletalMeshDto(originalMesh, Session.Options.MeshQuality, Session.Options.NaniteMeshFormat);
         if (dto.LODs.Count == 0)
         {
             throw new Exception("Skeletal mesh has no LODs");
         }
 
-        WarnIfNaniteDataIsBeingDropped(
-            dto, originalMesh.NaniteResources is { PageStreamingStates.Length: > 0 });
+        WarnIfNaniteDataIsBeingDropped(dto);
 
         if (dto.AssetUserData != null)
         {

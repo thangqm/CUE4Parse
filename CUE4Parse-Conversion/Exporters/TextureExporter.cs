@@ -62,7 +62,6 @@ public sealed class TextureExporter(UTexture texture) : ExporterBase(texture)
                 return;
             }
 
-            var layered = texture is UTexture2DArray;
             for (var i = 0; i < decoded.Length; i++)
             {
                 if (decoded[i] is not { } slice) continue;
@@ -78,13 +77,10 @@ public sealed class TextureExporter(UTexture texture) : ExporterBase(texture)
 
                 var data = slice.Encode(Session.Options, out var ext);
 
-                // The single-mip suffix comes from the shared namer so the glTF binder
-                // and this writer cannot drift apart. The all-mips branch stays local
-                // because it walks every mip, not just the first, and the namer only
-                // ever describes the first.
-                var suffix = all
-                    ? (layered ? $"_MIP{index}_LAYER{i}" : $"_MIP{index}")
-                    : TextureFileNamer.Suffix(texture, Session.Options, i);
+                // The suffix comes from the shared namer, both branches, so the glTF
+                // binder and this writer cannot drift apart. Only the mip differs: this
+                // loop walks every mip, while a caller predicting a name knows the first.
+                var suffix = TextureFileNamer.Suffix(texture, Session.Options, i, index);
                 files.Add(new ExportFile(ext, data, suffix));
             }
         }

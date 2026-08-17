@@ -25,15 +25,34 @@ public abstract class MeshExporter<T>(T mesh) : ExporterBase(mesh) where T : UOb
     /// carry only Nanite geometry the current silence produces a near-empty mesh with no
     /// explanation.
     /// </summary>
-    protected void WarnIfNaniteDataIsBeingDropped<TVertex>(MeshDto<TVertex> dto, bool hasNaniteData)
+    protected void WarnIfNaniteDataIsBeingDropped<TVertex>(MeshDto<TVertex> dto)
         where TVertex : struct, IMeshVertex
     {
-        if (Session.Options.NaniteMeshFormat != ENaniteMeshFormat.NoNanite || !hasNaniteData) return;
+        if (Session.Options.NaniteMeshFormat != ENaniteMeshFormat.NoNanite || !dto.HasNaniteData) return;
 
         Log.Warning(
             "Mesh has Nanite data that is being skipped ({LodCount} non-Nanite LOD(s) exported). " +
             "Pass --nanite nanite-only or --nanite nanite-first to include it.",
             dto.LODs.Count);
+    }
+
+    /// <summary>
+    /// Everything a static-mesh-shaped export does once its DTO exists. Only the DTO
+    /// construction differs between a static mesh and a geometry collection, so only that
+    /// belongs in the subclass.
+    /// </summary>
+    /// <param name="label">Names the asset kind in the empty-LOD error, e.g. "Static mesh".</param>
+    protected IReadOnlyList<ExportFile> BuildStaticMeshFiles(StaticMeshDto dto, IMeshExportFormat format, string label)
+    {
+        if (dto.LODs.Count == 0)
+        {
+            throw new Exception($"{label} has no LODs");
+        }
+
+        WarnIfNaniteDataIsBeingDropped(dto);
+
+        var materialPaths = EnqueueMaterials(dto.Materials);
+        return format.BuildStaticMesh(CreateContext(materialPaths), dto);
     }
 
     protected override IReadOnlyList<ExportFile> BuildExportFiles(CancellationToken ct = default)

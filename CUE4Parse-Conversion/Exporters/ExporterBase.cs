@@ -107,16 +107,13 @@ public abstract class ExporterBase : IExporter
 
     protected string Resolve(UObject obj, string extension) => Resolve(obj, SaveDirectory, extension);
 
-    internal static string Resolve(UObject obj, string fromDirectory, string extension)
-        => Resolve(obj, fromDirectory, extension, null);
-
     /// <summary>
     /// Relative reference to another object's output file. <paramref name="nameSuffix"/>
     /// addresses siblings written by an exporter with a suffixed name, e.g. the
     /// repacked <c>_ORM</c> texture. It is appended after the leaf/name collapse, so the
     /// reference points at a sibling file rather than into a nested folder.
     /// </summary>
-    internal static string Resolve(UObject obj, string fromDirectory, string extension, string? nameSuffix)
+    internal static string Resolve(UObject obj, string fromDirectory, string extension, string? nameSuffix = null)
     {
         var packagePath = BuildPackagePath(obj);
 

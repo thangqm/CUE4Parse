@@ -12,16 +12,7 @@ public sealed class StaticMeshExporter(UStaticMesh originalMesh) : MeshExporter<
     protected override IReadOnlyList<ExportFile> BuildFiles(UStaticMesh originalMesh, IMeshExportFormat format)
     {
         using var dto = new StaticMeshDto(originalMesh, Session.Options.MeshQuality, Session.Options.NaniteMeshFormat);
-        if (dto.LODs.Count == 0)
-        {
-            throw new Exception("Static mesh has no LODs");
-        }
-
-        WarnIfNaniteDataIsBeingDropped(
-            dto, originalMesh.RenderData?.NaniteResources is { PageStreamingStates.Length: > 0 });
-
-        var materialPaths = EnqueueMaterials(dto.Materials);
-        return format.BuildStaticMesh(CreateContext(materialPaths), dto);
+        return BuildStaticMeshFiles(dto, format, "Static mesh");
     }
 }
 
@@ -30,15 +21,6 @@ public sealed class GeometryCollectionExporter(UGeometryCollection originalMesh)
     protected override IReadOnlyList<ExportFile> BuildFiles(UGeometryCollection originalMesh, IMeshExportFormat format)
     {
         using var dto = new StaticMeshDto(originalMesh, Session.Options.NaniteMeshFormat);
-        if (dto.LODs.Count == 0)
-        {
-            throw new Exception("Geometry collection mesh has no LODs");
-        }
-
-        WarnIfNaniteDataIsBeingDropped(
-            dto, originalMesh.RenderData?.NaniteResources is { PageStreamingStates.Length: > 0 });
-
-        var materialPaths = EnqueueMaterials(dto.Materials);
-        return format.BuildStaticMesh(CreateContext(materialPaths), dto);
+        return BuildStaticMeshFiles(dto, format, "Geometry collection mesh");
     }
 }

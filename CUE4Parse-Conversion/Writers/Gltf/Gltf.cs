@@ -30,6 +30,7 @@ public class Gltf
 
     private readonly MeshExportContext _context;
     private readonly Dictionary<UMaterialInterface, CMaterialParams2> _paramCache = new();
+    private readonly Dictionary<(UMaterialInterface, string), MaterialBuilder> _materialCache = new();
 
     public Gltf(string name, MeshLodDto<MeshVertex> lod, in MeshExportContext context)
     {
@@ -138,7 +139,10 @@ public class Gltf
             MergeBuffers = true,
         };
 
-        Ar.Write(Model.WriteGLB(settings).ToArray());
+        // WriteGLB returns an ArraySegment, which binds to Write(ReadOnlySpan<byte>)
+        // directly. ToArray() would duplicate the whole GLB — every vertex and index
+        // buffer — for nothing.
+        Ar.Write(Model.WriteGLB(settings));
     }
 
     /// <summary>
@@ -150,6 +154,22 @@ public class Gltf
     /// walk the material graph eight times.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Cached per (material, slot): binding allocates a placeholder image per channel,
+    /// and a mesh whose sections all share one material would otherwise build — and make
+    /// <c>ToGltf2()</c> deduplicate — the same four images once per section. Keyed on the
+    /// slot name too, because that is the built material's name.
+    /// </summary>
+    private MaterialBuilder BindMaterial(UMaterialInterface material, string slotName)
+    {
+        if (_materialCache.TryGetValue((material, slotName), out var cached)) return cached;
+
+        var builder = GltfMaterialBinder.Bind(
+            material, ResolveParams(material), slotName, _context.Options, _context.SaveDirectory);
+        _materialCache[(material, slotName)] = builder;
+        return builder;
+    }
+
     private CMaterialParams2 ResolveParams(UMaterialInterface material)
     {
         if (_paramCache.TryGetValue(material, out var cached)) return cached;
@@ -222,7 +242,7 @@ public class Gltf
             // --no-materials disables the binder implicitly: with no materials exported
             // there is nothing on disk for a URI to point at.
             var mat = _context.Options.ExportMaterials && slot?.Material?.TryLoad<UMaterialInterface>(out var material) == true
-                ? GltfMaterialBinder.Bind(material, ResolveParams(material), slotName, _context.Options, _context.SaveDirectory)
+                ? BindMaterial(material, slotName)
                 : new MaterialBuilder(slotName).WithBaseColor(Vector4.One);
 
             var prim = builder.UsePrimitive(mat);

@@ -46,27 +46,38 @@ public sealed class ExportSession(Action<StreamingLevelFilterArgs, CancellationT
     private readonly ConcurrentDictionary<string, byte> _paths = new(StringComparer.OrdinalIgnoreCase);
 
     public ExportSession Add(UObject export)
+        => TryAdd(export)
+            ? this
+            : throw new NotSupportedException($"Could not create exporter for export of type '{export.GetType().Name}'.");
+
+    /// <summary>
+    /// Queues <paramref name="export"/> if a exporter exists for its type, reporting
+    /// <c>false</c> rather than throwing when none does. A caller walking every export of
+    /// a package hits that case constantly — data tables, blueprints, settings objects —
+    /// so it is an answer, not an error.
+    /// </summary>
+    public bool TryAdd(UObject export)
     {
-        return export switch
+        switch (export)
         {
-            UTexture texture => Add(new TextureExporter(texture)),
-            UMaterialInterface material => Add(new MaterialExporter(material)),
-            USkeletalMesh skeletalMesh => Add(new SkeletalMeshExporter(skeletalMesh)),
-            UStaticMesh staticMesh => Add(new StaticMeshExporter(staticMesh)),
-            UGeometryCollection geometryCollection => Add(new GeometryCollectionExporter(geometryCollection)),
-            USkeleton skeleton => Add(new SkeletonExporter(skeleton)),
-            UPoseAsset poseAsset => Add(new PoseAssetExporter(poseAsset)),
-            UAnimationAsset animation => Add(new AnimationExporter(animation)),
-            UDNAAsset dna => Add(new DnaExporter(dna)),
-            UWorld world => Add(new WorldExporter(world)),
-            ALandscapeProxy landscape => Add(new LandscapeMeshExporter(landscape)),
-            ULandscapeComponent landscape => Add(new LandscapeMeshExporter2(landscape)),
-            USplineMeshComponent spline => Add(new SplineMeshExporter(spline)),
+            case UTexture texture: Add(new TextureExporter(texture)); return true;
+            case UMaterialInterface material: Add(new MaterialExporter(material)); return true;
+            case USkeletalMesh skeletalMesh: Add(new SkeletalMeshExporter(skeletalMesh)); return true;
+            case UStaticMesh staticMesh: Add(new StaticMeshExporter(staticMesh)); return true;
+            case UGeometryCollection geometryCollection: Add(new GeometryCollectionExporter(geometryCollection)); return true;
+            case USkeleton skeleton: Add(new SkeletonExporter(skeleton)); return true;
+            case UPoseAsset poseAsset: Add(new PoseAssetExporter(poseAsset)); return true;
+            case UAnimationAsset animation: Add(new AnimationExporter(animation)); return true;
+            case UDNAAsset dna: Add(new DnaExporter(dna)); return true;
+            case UWorld world: Add(new WorldExporter(world)); return true;
+            case ALandscapeProxy landscape: Add(new LandscapeMeshExporter(landscape)); return true;
+            case ULandscapeComponent landscape: Add(new LandscapeMeshExporter2(landscape)); return true;
+            case USplineMeshComponent spline: Add(new SplineMeshExporter(spline)); return true;
             // Deliberately not USoundCue: a cue is a node graph, not audio data, and
             // dispatching it here would write a bogus file instead of reporting a skip.
-            USoundWave or USoundNodeWave or UAkMediaAssetData => Add(new SoundExporter(export)),
-            _ => throw new NotSupportedException($"Could not create exporter for export of type '{export.GetType().Name}'.")
-        };
+            case USoundWave or USoundNodeWave or UAkMediaAssetData: Add(new SoundExporter(export)); return true;
+            default: return false;
+        }
     }
 
     public ExportSession Add(ExporterBase exporter)
