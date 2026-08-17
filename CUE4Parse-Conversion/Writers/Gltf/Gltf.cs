@@ -55,6 +55,10 @@ public class Gltf
         _context = context;
 
         var sceneBuilder = new SceneBuilder(name);
+        // No lod._suffix here, unlike upstream: `name` is already the file stem, which
+        // GltfMeshFormat built as ObjectName + lod._suffix. Appending it again would
+        // give MESH_X_LOD2.ao_LOD2. Uniqueness across LODs is what upstream was after,
+        // and the suffix carried in `name` already provides it.
         var armatureRoot = new NodeBuilder($"{name}.ao");
         var armature = CreateGltfSkeleton(mesh.Bones, armatureRoot);
 
