@@ -389,7 +389,15 @@ public sealed class SkeletalMeshDto : SkeletonDto
             ParseMeshRenderData(mesh, quality);
         }
 
-        var shouldParseNanite = naniteFormat != ENaniteMeshFormat.NoNanite && MorphTargets is { Length: > 0} && exportMorphTarget || LODs.Count == 0;
+        // Local divergence from upstream, which also requires `MorphTargets is { Length: > 0 }
+        // && exportMorphTarget` here. That gate drops Nanite geometry the user explicitly
+        // asked for whenever a skeletal mesh happens to have no morph targets, with no
+        // warning — WarnIfNaniteDataIsBeingDropped returns early unless --nanite is
+        // no-nanite. Whether morph targets exist says nothing about whether Nanite was
+        // requested, and both sibling StaticMeshDto ctors use exactly the condition below,
+        // so the skeletal path was the odd one out. `exportMorphTarget` is kept in the
+        // signature, unused, so the ctor stays merge-compatible with upstream.
+        var shouldParseNanite = naniteFormat != ENaniteMeshFormat.NoNanite || LODs.Count == 0;
         if (shouldParseNanite && mesh.NaniteResources is { PageStreamingStates.Length: > 0 } nanite)
         {
             ParseNaniteResources(this, nanite, naniteFormat);

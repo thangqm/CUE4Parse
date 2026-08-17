@@ -205,13 +205,6 @@ Honest limits of what CI checks.
   so no test opens one. `ParseCollectionRenderData` also throws when
   `RenderData.CustomData` is not the `MR`-shaped list it expects, which means the only
   asset layout it is known to handle is the one upstream had on hand.
-- **A skeletal mesh's Nanite geometry is dropped without a warning when it has no morph
-  targets.** Upstream gates `shouldParseNanite` on `MorphTargets is { Length: > 0 } &&
-  exportMorphTarget`, so `--nanite nanite-first` and `nanite-last` on a morph-free
-  skeletal mesh silently fall back to the render-data LODs.
-  `WarnIfNaniteDataIsBeingDropped` does not fire, because it returns early whenever
-  `--nanite` is anything but `no-nanite`. `nanite-only` is unaffected: it skips
-  `ParseMeshRenderData`, so the `|| LODs.Count == 0` arm still parses Nanite.
 - **The native library is built by a deliberately non-fatal CMake step.** A machine
   without CMake, or with an uninitialised `ACL/external/acl` submodule, silently gets
   `library: false` / `acl: false` and degraded animation support rather than a failed

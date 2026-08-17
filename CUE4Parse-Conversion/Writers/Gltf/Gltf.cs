@@ -72,7 +72,11 @@ public class Gltf
             for (var j = 0; j < morphTargets.Length; j++)
             {
                 var morphTarget = morphTargets[j].Load<UMorphTarget>();
-                if (morphTarget?.MorphLODModels == null || morphTarget.MorphLODModels.Length < lod.SourceLodIndex || morphTarget.MorphLODModels[lod.SourceLodIndex].Vertices.Length == 0)
+                // `>= Length`, not `Length <`: a morph target may carry fewer
+                // MorphLODModels than the mesh has LODs, and at SourceLodIndex == Length
+                // the old comparison let the index through to throw one line later.
+                // UEModel.cs writes the same guard the correct way.
+                if (morphTarget?.MorphLODModels == null || lod.SourceLodIndex >= morphTarget.MorphLODModels.Length || morphTarget.MorphLODModels[lod.SourceLodIndex].Vertices.Length == 0)
                     continue;
 
                 var morphBuilder = meshBuilder.UseMorphTarget(j);
