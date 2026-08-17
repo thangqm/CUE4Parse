@@ -94,6 +94,26 @@ cue4 info --paks ... --game 5.6
 
 Returns one object. Read `missingAesGuids` and `fileCount` first.
 
+```json
+{
+  "game": "GAME_UE5_6", "paksDir": "...", "mappings": "...",
+  "mountedVfs": 42, "unloadedVfs": 0, "fileCount": 918273,
+  "missingAesGuids": [],
+  "native": { "library": true, "acl": true, "oodle": "native" }
+}
+```
+
+`unloadedVfs` counts archives that were found but **not** mounted. Encrypted archives
+whose GUIDs are still in `missingAesGuids` land here, but so do containers that are never
+mounted as such — on an IoStore game `global.utoc` shows up here — so a non-zero count is
+not by itself a problem. Name them before drawing a conclusion:
+
+`--verbose` adds `mountedArchives` and `unloadedArchives`, each an ordered array of
+archive names. Counts cannot settle a disagreement with another tool about how many
+archives a game has; names can.
+
+See §10 for the `native` block.
+
 ### `list` — find assets (cheap, never deserializes)
 
 ```bash
@@ -178,9 +198,42 @@ cue4 export --glob "**/Meshes/*.uasset" -o ./out --mesh-format gltf2
 - **Console/Switch textures decode to garbage without the matching
   `--texture-platform`.** If textures look scrambled, that's the cause.
 - `--mesh-format usd` forces PNG textures regardless of `--texture-format`.
+- `--texture-format jpeg` writes files ending `.jpg`, not `.jpeg`.
 - Assets with no exporter (DataTables, Blueprints, DataAssets…) report
   `{"status":"skipped"}` and **do not** fail the run. Only a real export failure
   gives exit 8. Do not treat `skipped` as an error.
+- **Export is transitive.** A glob matching only meshes still writes their materials
+  (`<Name>.json`) and every texture those materials reference.
+
+**`--mesh-format gltf2` cannot export animations or skeletons.** This is the one that
+bites a character-export glob:
+
+```bash
+cue4 export --glob "**/Characters/**/*.uasset" -o ./out --mesh-format gltf2
+# -> {"path":".../AS_Walk.AS_Walk","status":"error",
+#     "message":"Animation export does not support format Gltf2. ..."}
+# -> exit 8
+```
+
+`UAnimSequence`, `UAnimMontage`, `UBlendSpace`, `UAnimComposite` and `USkeleton` all
+report `status:"error"` — **not** `skipped` — so one animation in the glob turns a
+perfectly good mesh export into exit 8. (`UPoseAsset` is narrower still: `ueformat` is
+the only format that exports it at all.) There is no "meshes only" filter, so split the
+work by path and run it twice:
+
+```bash
+cue4 export --glob "**/Characters/**/Meshes/*.uasset" -o ./out --mesh-format gltf2
+cue4 export --glob "**/Characters/**/Animations/*.uasset" -o ./out --mesh-format ueformat
+```
+
+Use `list --glob` first to find the folder split for the game you are on. Blender reads
+`.glb` natively; `.ueanim`, `.uepose` and `.psa` need the corresponding importer addon.
+
+**Nanite meshes warn on stderr.** With the default `--nanite no-nanite`, a mesh that
+carries Nanite geometry logs `Mesh has Nanite data that is being skipped (N non-Nanite
+LOD(s) exported)`. On a UE5 title whose meshes are Nanite-only that is the difference
+between "the exporter is broken" and "pass `--nanite nanite-only`". It goes to stderr,
+so do not discard stderr entirely while you are still figuring out a game.
 
 **The flags added since the first release of this guide:**
 

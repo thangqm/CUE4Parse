@@ -41,12 +41,25 @@ manifest entries) uses `/`.
 `SourceLodIndex` is the LOD's index **in the source asset**, not its position in the
 export. With `--mesh-quality highest`, `SM_Fixture.glb` may therefore contain source
 LOD 3 — the file name does not say which, and the manifest does not report it either
-(see §8).
+(see §9).
+
+Animations follow the same shape one level down: an anim set writes one file per
+sequence, the first unsuffixed and later ones `_SEQ{i}`.
+
+The extension follows `--mesh-format`:
+
+| `--mesh-format` | Mesh | Animation |
+|---|---|---|
+| `gltf2` | `.glb` | **unsupported — see §6** |
+| `ueformat` | `.uemodel` | `.ueanim` |
+| `actorx` | `.psk` for a skeletal LOD of ≤ 65536 vertices, `.pskx` for anything above that and for every static mesh | `.psa` |
+| `usd` | `.usda` | `.usda` |
 
 ## 3. Texture file names
 
-The extension follows `--texture-format` (`png`, `jpg`, `tga`, `webp`), with three
-exceptions that stack:
+The extension follows `--texture-format`, with three exceptions that stack. Note that
+the flag value and the extension differ in one case: `--texture-format jpeg` writes
+`.jpg`. The four are `png` → `.png`, `jpeg` → `.jpg`, `tga` → `.tga`, `webp` → `.webp`.
 
 - **HDR sources** are written as `.hdr` regardless of `--texture-format`, but only when
   the cooked pixel format survives decoding as an HDR format. Block-compressed HDR
@@ -102,9 +115,71 @@ datablock name from the file it just opened.
 The skeletal armature root node is `<that name>.ao`.
 
 Material slots are named after the UE material slot. A mesh section whose
-`MaterialInterface` is null yields a slot named `None`.
+`MaterialInterface` is null yields a slot named `None`; a section with no material slot
+at all yields `MaterialSlot_{i}`, numbered by section index.
 
-## 6. Audio
+## 6. Asset types, sidecars and per-format support
+
+Which classes produce files:
+
+| Class | Output |
+|---|---|
+| `USkeletalMesh`, `UStaticMesh`, `UGeometryCollection`, `USplineMeshComponent` | one mesh file per exported LOD (§2) |
+| `UTexture`, `UTexture2DArray` | one image per mip and layer (§3) |
+| `UMaterialInterface` | `<Name>.json` (below), plus `<Name>.usda` under `--mesh-format usd` |
+| `UAnimationAsset` | one animation file per sequence (§2) |
+| `UPoseAsset` | `<Name>.uepose` — **`ueformat` only** |
+| `USkeleton` | one skeleton-shaped mesh file — **not `gltf2`** |
+| `UDNAAsset` | `<Name>.dna` |
+| `UWorld`, `ALandscapeProxy`, `ULandscapeComponent` | mesh plus heightmap/weightmap PNGs — **outside this contract**, unverified |
+| `USoundWave`, `USoundNodeWave`, `UAkMediaAssetData` | §7 |
+
+Anything else — data tables, blueprints, data assets, material parameter collections,
+`USoundCue` — is reported `{"status":"skipped"}` and leaves the exit code alone.
+
+**Not every class supports every `--mesh-format`.** An unsupported combination is
+reported `status: "error"` — **not** `skipped` — and the run exits **8**:
+
+| Class | Supported formats |
+|---|---|
+| `UAnimationAsset` (`UAnimSequence`, `UAnimMontage`, `UBlendSpace`, `UAnimComposite`, …) | `ueformat`, `actorx`, `usd` — **not `gltf2`** |
+| `USkeleton` | `ueformat`, `actorx`, `usd` — **not `gltf2`** |
+| `UPoseAsset` | `ueformat` only |
+| meshes, textures, materials, sound | all formats |
+
+This writer emits no glTF animation channels, and a skeleton alone has no glTF
+representation. So one animation caught by the same glob as your meshes fails the whole
+run: export in two passes, `--mesh-format gltf2` for the meshes and `ueformat` for
+everything skeletal.
+
+**Material JSON sidecar.** Every exported material writes `<Name>.json`, whatever
+`--mesh-format` is (abridged — `Properties` carries the material's own UE properties):
+
+```json
+{
+  "Textures": { "PM_Diffuse": "/Game/Fixtures/Textures/T_BC3.T_BC3" },
+  "Parameters": {
+    "BlendMode": 0, "ShadingModel": 0,
+    "Colors": { "PrimaryColor": { "R": 0.1, "G": 0.2, "B": 0.8, "A": 1.0, "Hex": "597CE8" } },
+    "Scalars": { "FixtureRoughness": 0.375 },
+    "Switches": {}, "Properties": { },
+    "HasTopDiffuse": false, "HasTopNormals": false,
+    "HasTopSpecularMasks": false, "HasTopEmissive": false,
+    "IsTranslucent": false, "IsNull": false
+  }
+}
+```
+
+`Textures` maps each classified parameter name to the texture's UE object path — the same
+classification the glTF binder uses, so it is the way to see why a channel came out blank.
+The paths are UE object paths, **not** file paths; the written file for one of them
+follows §1 and §3.
+
+Export is transitive: exporting a mesh exports its materials, and exporting a material
+exports the textures it references. A `--glob` matching only meshes still produces
+material and texture files.
+
+## 7. Audio
 
 A sound asset is written as one file whose extension is the decoder's reported format,
 lowercased. The extension names the **container**, not a transcode: cue4 extracts, it
@@ -127,7 +202,7 @@ because it bundles vgmstream. Turning them into audio is a downstream step.
 **not** — it is a node graph with no audio data of its own, and is reported as
 `skipped`.
 
-## 7. Exit codes
+## 8. Exit codes
 
 | Code | Meaning |
 |---|---|
@@ -147,7 +222,7 @@ Exit 8 means an item **failed**. An object type with no exporter is reported as
 Exit 5 takes precedence over 7 when an archive is present but unmounted for want of a
 key: in that case cue4 genuinely cannot tell whether the asset exists.
 
-## 8. Non-commitments
+## 9. Non-commitments
 
 These are explicitly **not** promised, and a consumer that relies on them will break:
 
@@ -167,7 +242,7 @@ These are explicitly **not** promised, and a consumer that relies on them will b
   `base + sum(weight × delta)` after summation.
 - **`--all-mips` removes the unsuffixed file.** Do not assume it is still there.
 
-## 9. Verification gaps
+## 10. Verification gaps
 
 Honest limits of what CI checks.
 
