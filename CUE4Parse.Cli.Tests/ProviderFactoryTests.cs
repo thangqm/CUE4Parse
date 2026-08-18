@@ -6,6 +6,34 @@ namespace CUE4Parse.Cli.Tests;
 
 public class ProviderFactoryTests
 {
+    /// <summary>
+    /// The precedence an offline copy depends on. Uses a name no helper ever loads, so it
+    /// cannot disturb the real dlls.
+    /// </summary>
+    [Fact]
+    public void NativeDependencyPrefersASidecarOverTheCache()
+    {
+        const string probe = "cue4-sidecar-probe.dll";
+        var sidecar = Path.Combine(AppContext.BaseDirectory, probe);
+        var cached = Path.Combine(CachePaths.Root, probe);
+
+        Assert.False(File.Exists(sidecar), $"{probe} must not already exist for this test to mean anything.");
+        Assert.Equal(cached, ProviderFactory.ResolveNativeDependency(probe));
+
+        try
+        {
+            File.WriteAllBytes(sidecar, []);
+            Assert.Equal(sidecar, ProviderFactory.ResolveNativeDependency(probe));
+        }
+        finally
+        {
+            File.Delete(sidecar);
+        }
+
+        // The cache is the fallback, not a second sidecar: removing the file restores it.
+        Assert.Equal(cached, ProviderFactory.ResolveNativeDependency(probe));
+    }
+
     [Theory]
     [InlineData("0x0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20")]
     [InlineData("0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20")]

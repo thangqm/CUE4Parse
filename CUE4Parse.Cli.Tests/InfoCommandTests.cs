@@ -37,7 +37,7 @@ public class InfoCommandTests
         Assert.NotNull(native);
         Assert.NotNull(native!["library"]);
         Assert.NotNull(native["acl"]);
-        Assert.Contains(native["oodle"]!.Value<string>(), new[] { "native", "downloaded", "unavailable" });
+        Assert.Contains(native["oodle"]!.Value<string>(), new[] { "native", "sidecar", "cached", "unavailable" });
     }
 
     /// <summary>

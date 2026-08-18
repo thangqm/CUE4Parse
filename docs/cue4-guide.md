@@ -388,17 +388,25 @@ working `cue4` with degraded animation support rather than a failed build:
 
 ```bash
 cue4 info --paks ... --game 5.6
-# -> "native": { "library": true, "acl": true, "oodle": "native" | "downloaded" }
+# -> "native": { "library": true, "acl": true, "oodle": "sidecar" }
 ```
 
 - `library: false` — no native library at all; ACL animations will fail.
 - `acl: false` — the library exists but was built without ACL. Most animations in
   recent UE titles are ACL-compressed and will fail to export. Meshes, textures,
   materials and JSON dumps are unaffected.
-- `oodle` is **three** states, not a boolean. `"native"` means compiled in;
-  `"downloaded"` means `oo2core` was fetched to `%LOCALAPPDATA%\cue4\cache\` — that
-  first run needs network access, later runs do not; `"unavailable"` means neither.
-  zlib is always supported.
+- `oodle` names its source, not a yes/no: `"native"` (compiled into the native
+  library), `"sidecar"` (dll beside the binary), `"cached"` (dll in
+  `%LOCALAPPDATA%\cue4\cache\`, downloaded on first use), `"unavailable"`. Only
+  `"cached"` ever needed the network. zlib is always supported.
+
+### Running offline
+
+`cue4` reads `oodle-data-shared.dll`, `zlib-ng2.dll` and `Detex.dll` from its own
+directory first, then from `%LOCALAPPDATA%\cue4\cache\`, downloading them there on
+first use. `publish.ps1` copies all three into the published folder, so copying that
+folder is enough to run with no network. Without them you lose Oodle archives, zlib
+archives and every BC7/BC6H/ETC texture. Use `-SkipNativeSidecars` to publish without.
 
 `info` still prints the `native` block when the mount itself fails (exit 4), so it
 answers "is this binary capable?" independently of "did these archives load?".

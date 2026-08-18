@@ -64,15 +64,14 @@ public static class InfoCommand
     }
 
     /// <summary>
-    /// Three states, not a boolean. OodleHelper falls back to downloading oo2core when
-    /// the native library was built without Oodle, so "no native Oodle" does not mean
-    /// "no Oodle" — and the downloaded path needs network access, which is what breaks
-    /// on an offline CI runner. A boolean carrying three meanings is exactly what makes
-    /// an agent parsing this output reason wrongly with no way to tell.
+    /// Names where Oodle came from, not whether it exists: "cached" is the only state
+    /// that needed the network, so an offline run that fails is diagnosable from this
+    /// line alone.
     /// </summary>
     private static string OodleState()
     {
         if (CUE4ParseNatives.IsFeatureAvailable("Oodle\0"u8)) return "native";
-        return OodleHelper.Instance is not null ? "downloaded" : "unavailable";
+        if (OodleHelper.Instance is null) return "unavailable";
+        return ProviderFactory.OodleFromSidecar ? "sidecar" : "cached";
     }
 }

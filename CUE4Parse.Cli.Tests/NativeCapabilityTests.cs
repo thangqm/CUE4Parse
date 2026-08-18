@@ -1,4 +1,7 @@
+using System.Runtime.InteropServices;
+using CUE4Parse.ACL;
 using CUE4Parse.Cli.Commands;
+using CUE4Parse.Cli.Services;
 using CUE4Parse.Utils;
 using Newtonsoft.Json.Linq;
 
@@ -32,12 +35,11 @@ public class NativeCapabilityTests
     }
 
     /// <summary>
-    /// Oodle is three-valued because <c>OodleHelper</c> downloads <c>oo2core</c> when the
-    /// native library was built without it. "native" specifically claims the compiled-in
-    /// path, so it may not be reported while the library itself is absent.
+    /// Each value names a different source, and only "cached" ever needed the network.
+    /// "native" claims the compiled-in path, so it cannot be reported without the library.
     /// </summary>
     [Fact]
-    public void OodleReportingDistinguishesCompiledInFromDownloaded()
+    public void OodleReportsWhichSourceItLoadedFrom()
     {
         var (context, sw) = FixtureSupport.Context();
         InfoCommand.Execute(context);
@@ -45,7 +47,7 @@ public class NativeCapabilityTests
         var native = JObject.Parse(sw.ToString())["native"]!;
         var oodle = native["oodle"]!.Value<string>();
 
-        Assert.Contains(oodle, new[] { "native", "downloaded", "unavailable" });
+        Assert.Contains(oodle, new[] { "native", "sidecar", "cached", "unavailable" });
 
         if (oodle == "native")
         {
@@ -56,6 +58,39 @@ public class NativeCapabilityTests
         else
         {
             Assert.False(CUE4ParseNatives.IsFeatureAvailable("Oodle\0"u8));
+        }
+
+        Assert.Equal(oodle == "sidecar", ProviderFactory.OodleFromSidecar);
+    }
+
+    /// <summary>
+    /// <c>IsFeatureAvailable("ACL")</c> only reports the <c>WITH_ACL</c> compile flag.
+    /// Driving a bogus buffer through ACL's own <c>compressed_tracks::is_valid</c> and
+    /// requiring ACL's diagnostic back proves it is linked and callable. Not an
+    /// end-to-end decode — no redistributable fixture is ACL-compressed.
+    /// </summary>
+    [Fact]
+    public void AclNativeCodeIsCallableWhenTheFeatureIsReported()
+    {
+        if (!CUE4ParseNatives.IsFeatureAvailable("ACL\0"u8))
+            Assert.Skip("Native library was built without ACL; nothing to exercise.");
+
+        const int size = 256;
+        var handle = ACLNative.nAllocate(size);
+        Assert.NotEqual(IntPtr.Zero, handle);
+
+        try
+        {
+            // All-zero is deliberately not a valid compressed_tracks buffer.
+            Marshal.Copy(new byte[size], 0, handle, size);
+            var error = new CompressedTracks(handle).IsValid(false);
+
+            Assert.False(string.IsNullOrEmpty(error),
+                "ACL accepted an all-zero buffer, so is_valid did not actually run.");
+        }
+        finally
+        {
+            ACLNative.nDeallocate(handle, size);
         }
     }
 }

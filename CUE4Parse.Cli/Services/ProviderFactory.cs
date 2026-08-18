@@ -139,11 +139,18 @@ public static class ProviderFactory
     {
         Directory.CreateDirectory(CachePaths.Root);
 
-        OodleHelper.Initialize(CUE4ParseNatives.IsFeatureAvailable("Oodle\0"u8)
-            ? null
-            : Path.Combine(CachePaths.Root, OodleHelper.OodleFileName));
+        if (CUE4ParseNatives.IsFeatureAvailable("Oodle\0"u8))
+        {
+            OodleHelper.Initialize();
+        }
+        else
+        {
+            var (oodlePath, sidecar) = Resolve(OodleHelper.OodleFileName);
+            OodleFromSidecar = sidecar;
+            OodleHelper.Initialize(oodlePath);
+        }
 
-        ZlibHelper.Initialize(Path.Combine(CachePaths.Root, ZlibHelper.DllName));
+        ZlibHelper.Initialize(ResolveNativeDependency(ZlibHelper.DllName));
 
         // Detex is the third of these and was simply missing. On Windows, TextureDecoder
         // routes BC7, BC6H and the ETC family through it; uninitialized, every one of
@@ -154,7 +161,7 @@ public static class ProviderFactory
         // embedded payload is a Windows DLL.
         if (OperatingSystem.IsWindows())
         {
-            var detexPath = Path.Combine(CachePaths.Root, DetexHelper.DLL_NAME);
+            var detexPath = ResolveNativeDependency(DetexHelper.DLL_NAME);
             if (DetexHelper.LoadDll(detexPath))
             {
                 DetexHelper.Initialize(detexPath);
@@ -165,6 +172,25 @@ public static class ProviderFactory
             }
         }
     }
+
+    /// <summary>
+    /// Where a downloadable native is read from: beside the executable first, the cache
+    /// otherwise. The sidecar is what lets a copied folder run offline;
+    /// <c>AppContext.BaseDirectory</c> is the executable's directory even under
+    /// <c>PublishSingleFile</c>, where <c>Assembly.Location</c> is empty. The fallback is
+    /// the cache rather than the program directory because the download destination must
+    /// be writable.
+    /// </summary>
+    public static string ResolveNativeDependency(string fileName) => Resolve(fileName).Path;
+
+    private static (string Path, bool Sidecar) Resolve(string fileName)
+    {
+        var sidecar = Path.Combine(AppContext.BaseDirectory, fileName);
+        return File.Exists(sidecar) ? (sidecar, true) : (Path.Combine(CachePaths.Root, fileName), false);
+    }
+
+    /// <summary>True when Oodle was loaded from a dll beside the executable rather than the cache.</summary>
+    public static bool OodleFromSidecar { get; private set; }
 
     public static FAesKey ParseAesKey(string value)
     {

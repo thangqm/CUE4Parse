@@ -301,13 +301,17 @@ the same codes.
 
 ## 10. Known limitations of this build
 
-- **ACL-compressed animations are not supported.** The native library was built
-  without ACL (its submodule is uninitialized). Most animations in recent UE titles
-  are ACL-compressed and will fail to export. Everything else — meshes, textures,
-  materials, JSON dumps — is unaffected.
-- Oodle and zlib decompression **are** supported; the required DLLs download
-  automatically to `%LOCALAPPDATA%\cue4\cache\` on first use. That first run needs
-  network access; later runs do not.
+- **Ask the build what it supports; do not assume.** `cue4 info` prints a `native`
+  block even when the mount fails (exit 4). `acl: false` (or `library: false`) means
+  ACL-compressed animations — most animation in recent UE titles — will fail to export;
+  meshes, textures, materials and JSON dumps are unaffected. `publish.ps1` refuses to
+  ship an `acl: false` binary unless `-AllowMissingNatives` is passed.
+- **Animation export formats are ActorX, UEFormat and USD.** `--mesh-format gltf2`
+  raises `NotSupportedException` for animation assets.
+- Oodle and zlib decompression **are** supported. `cue4` reads `oodle-data-shared.dll`,
+  `zlib-ng2.dll` and `Detex.dll` from its own directory first, then from
+  `%LOCALAPPDATA%\cue4\cache\`, downloading them there on first use. `publish.ps1` ships
+  them beside the binary; `info` reports which source was used.
 - Verified against UE5.8 test archives (Oodle, Zlib, Uncompressed, AES-encrypted).
   Not yet exercised against a full retail game install.
 

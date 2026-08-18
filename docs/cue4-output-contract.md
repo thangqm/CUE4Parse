@@ -264,15 +264,14 @@ Honest limits of what CI checks.
   claim "a Wwise asset exports to a `.wem` starting with `RIFF` whose size matches the
   source chunks" has only been checked by hand against a real Wwise title. Re-check it by
   hand when touching `SoundExporter` or `SoundDecoder`.
-- **ACL-compressed animation decode is not covered by CI.** `cue4 info` reports whether
-  the ACL feature is compiled in, and that reporting *is* tested
-  (`AclReportingMatchesTheNativeLibraryState` asserts `acl` against
-  `CUE4ParseNatives.IsFeatureAvailable`, and that `acl` can never be true without a
-  loaded library). Decoding an actual ACL-compressed animation is not tested: ACL
-  compression requires a UE plugin, the fixture set contains no ACL-compressed
-  animation, and game assets are not redistributable. So the plumbing is proven honest
-  and decompression is not proven to work at all. Verify by hand against a real ACL
-  title when touching animation decompression.
+- **ACL-compressed animation decode is not covered by CI.** Two weaker claims are
+  tested: `AclReportingMatchesTheNativeLibraryState` (the `acl` flag matches
+  `IsFeatureAvailable`, and is never true without a loaded library) and
+  `AclNativeCodeIsCallableWhenTheFeatureIsReported` (an all-zero buffer through ACL's own
+  `compressed_tracks::is_valid` returns ACL's diagnostic, so ACL is linked and callable;
+  skips when absent). A correct decode is still unproven — the fixture set has no
+  ACL-compressed animation and game assets are not redistributable. Verify by hand
+  against a real ACL title when touching animation decompression.
 - **`UGeometryCollection` export is not covered by CI.** Merged from upstream, it is
   dispatched by `ExportSession` through `GeometryCollectionExporter` and written by the
   same `IMeshExportFormat` path static meshes use, so §1, §2 and §5 apply to it
@@ -284,4 +283,7 @@ Honest limits of what CI checks.
   without CMake, or with an uninitialised `ACL/external/acl` submodule, silently gets
   `library: false` / `acl: false` and degraded animation support rather than a failed
   build. `cue4 info` is the way to tell which you have — check it before concluding an
-  animation decoded wrongly.
+  animation decoded wrongly. `CUE4Parse.Cli/publish.ps1` closes this for released
+  binaries — it falls back to the CMake bundled with Visual Studio and refuses to ship
+  `acl: false` unless `-AllowMissingNatives` is passed. Binaries built any other way
+  carry no such guarantee.
