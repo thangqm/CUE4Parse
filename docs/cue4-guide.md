@@ -423,7 +423,128 @@ animation exists in the redistributable fixture set, and neither can be added.
 
 ---
 
-## 11. Copy-paste starting point
+## 11. Stellar Blade → Blender, without importer addons
+
+The community guide
+([Stellar-Blade-Modding-Team/Stellar-Blade-Modding-Guide](https://github.com/Stellar-Blade-Modding-Team/Stellar-Blade-Modding-Guide/wiki))
+tells modders to install a UEFormat addon and a PSK/PSA addon before they can open a
+mesh, and a patched Blender FBX exporter before they can ship one. `cue4` removes the
+first requirement. **It cannot remove the second** — see "inverted bones" below for
+why, and do not tell anyone otherwise.
+
+```json
+{
+  "profiles": {
+    "sb": {
+      "paksDir": "D:/Games/StellarBlade/SB/Content/Paks",
+      "game": "GAME_StellarBlade",
+      "mappings": "C:/mods/StellarBlade_1.1.0.usmap"
+    }
+  }
+}
+```
+
+Two things bite here. **`--game 4.26` is wrong** — the shorthand resolves to
+`GAME_UE4_26` and drops the title's serialization quirks; pass the `EGame` name
+`GAME_StellarBlade`. And **there is no `--mappings` flag**: mappings are a profile key
+only, so a run without a config file has no way to load the `.usmap`. Take it from the
+guide repo — Stellar Blade is UE4.26 with unversioned properties, so without mappings
+every asset fails to deserialize.
+
+### The extraction that needs no addon
+
+Blender reads two of the four mesh formats with a stock install — `gltf2` and `usd` —
+and they trade off differently.
+
+**`gltf2`, for meshes.** This is the path with mileage on it: §10's retail verification
+run was `.glb` importing into Blender 5.2 with every texture resolving.
+
+```bash
+cue4 export -p sb --glob "**/Characters/**/Meshes/*.uasset" -o ./out \
+  --mesh-format gltf2 --socket-format none
+```
+
+It only covers meshes. `gltf2` **errors** — not `skipped` — on `UAnimSequence`,
+`UAnimMontage`, `UBlendSpace`, `UAnimComposite` and `USkeleton`, so a glob that sweeps a
+whole character folder returns exit 8 on an otherwise perfect mesh export. Split the runs
+by path, and take the animations in a format Blender cannot open unaided:
+
+```bash
+cue4 export -p sb --glob "**/Characters/**/Animations/*.uasset" -o ./out \
+  --mesh-format ueformat     # .ueanim - needs the UEFormat addon after all
+```
+
+**`usd`, for everything in one run.** USD exports skeletal meshes, `USkeleton` *and*
+animations, and Blender 4.0+ imports `.usda` natively — so it is the only setting that
+gets a whole character folder into Blender with no addon anywhere:
+
+```bash
+cue4 export -p sb --glob "**/Characters/**/*.uasset" -o ./out \
+  --mesh-format usd --socket-format none
+```
+
+The catch is verification: nothing in this repo has exercised the USD writer against
+Blender, so treat it as the promising route rather than the proven one, and fall back to
+`gltf2` if a mesh arrives wrong. `usd` also forces PNG textures regardless of
+`--texture-format`.
+
+**`--socket-format none` matters for both.** The default is `bone`, which materialises
+sockets such as `FX_GunFire_Rail_End` as real bones far from the origin — that is the
+"model floats in the sky" bug the wiki blames on the importer. glTF never writes sockets,
+so the flag is belt-and-braces there; the USD writer does write them, so there it is
+load-bearing.
+
+**Set Blender's scene unit scale to `0.01` on import.** The glTF writer already divides
+by 100 (`UnitScale` in `Writers/Gltf/Gltf.cs`), so the mesh arrives in metres.
+
+### Inverted bones — out of scope for this tool, permanently
+
+Stellar Blade's skeleton carries roughly sixty bones whose **rest scale is negative**
+(`-1,-1,-1`, plus a group at `-0.2325`); the guide repo ships the list as
+`negative_bones.txt`. Meshes weighted to them deform inside-out once a mod is re-imported
+into the game, which is what the patched FBX exporter's "Inverted Bones Fix" exists to
+undo.
+
+That damage does not happen here, and cannot be repaired here:
+
+- `cue4` writes the scale faithfully in both formats — `Writers/UEFormat/UEModel.cs`
+  serializes `bone.Transform.Scale3D`, and `Writers/Gltf/Gltf.cs` sets it as the joint
+  node's local scale.
+- Blender is where it is lost. An `EditBone` has only head, tail and roll — there is no
+  rest scale, and a uniform `-1` is a reflection (determinant −1) that no rotation can
+  encode. Every importer must drop it.
+- So the corruption is introduced on the **Blender → FBX write**, downstream of anything
+  `cue4` produces. There is no FBX writer in this repository and adding one would not
+  help: the edited mesh leaves Blender, not `cue4`.
+
+Pre-compensating at export time is also ruled out — a mod re-binds against the game's
+original skeleton asset, so the bind pose is fixed by the game, not by us.
+
+What `cue4` *can* do is keep the bone list honest. `negative_bones.txt` is hand-maintained
+and goes stale on every patch; the authoritative set is one dump away:
+
+```bash
+cue4 dump -p sb "SB/Content/.../SK_Eve_Skeleton.uasset" \
+| jq -r '.[] | select(.Type == "Skeleton") | .ReferenceSkeleton
+         | [.FinalRefBoneInfo[].Name] as $names
+         | .FinalRefBonePose | to_entries[]
+         | select(.value.Scale3D.X < 0)
+         | "\($names[.key])\t\(.value.Scale3D.X)"'
+```
+
+`FinalRefBoneInfo` and `FinalRefBonePose` are parallel arrays, hence the index join.
+
+### Issues the guide reports that are not export bugs
+
+| Symptom | Where the fix actually is |
+|---|---|
+| Neck seams | UE import setting — `Import Normals`, not `Compute Normals` |
+| Head shapekeys missing | UE import setting — tick "Import Morph Targets". `cue4` exports morphs by default; `--no-morph-targets` opts out |
+| Inverted bone deformation | patched Blender FBX exporter, the AnimBP fix, or weight transfer — see above |
+
+---
+
+## 12. Copy-paste starting point
 
 ```bash
 CUE4="C:/tools/cue4.exe"
